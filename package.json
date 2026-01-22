@@ -1,0 +1,25 @@
+{
+  "name": "nir3-feedback-app",
+  "version": "1.0.0",
+  "description": "Feedback form application with React frontend and Express backend",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "nodemon server/index.js",
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "install:all": "npm install && cd client && npm install"
+  },
+  "keywords": ["react", "express", "feedback", "form"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "concurrently": "^8.2.2"
+  }
+}
