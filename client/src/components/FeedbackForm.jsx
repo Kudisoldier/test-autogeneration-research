@@ -1,62 +1,14 @@
 import React, { useState } from 'react';
+import { validateField, validateForm as validateFormData } from '../utils/validation';
+import { submitFeedback } from '../utils/api';
+import { INITIAL_FORM_DATA, RATING_OPTIONS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../utils/constants';
 import './FeedbackForm.css';
 
 const FeedbackForm = ({ onSuccess }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    rating: '',
-    message: ''
-  });
-
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
-
-  const validateField = (name, value) => {
-    let error = '';
-
-    switch (name) {
-      case 'name':
-        if (!value.trim()) {
-          error = 'Name is required';
-        } else if (value.trim().length < 2) {
-          error = 'Name must be at least 2 characters';
-        }
-        break;
-      case 'email':
-        if (!value.trim()) {
-          error = 'Email is required';
-        } else {
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(value)) {
-            error = 'Please enter a valid email address';
-          }
-        }
-        break;
-      case 'rating':
-        if (!value) {
-          error = 'Rating is required';
-        } else {
-          const ratingNum = parseInt(value);
-          if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
-            error = 'Rating must be between 1 and 5';
-          }
-        }
-        break;
-      case 'message':
-        if (!value.trim()) {
-          error = 'Message is required';
-        } else if (value.trim().length < 10) {
-          error = 'Message must be at least 10 characters';
-        }
-        break;
-      default:
-        break;
-    }
-
-    return error;
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -88,61 +40,35 @@ const FeedbackForm = ({ onSuccess }) => {
     }));
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    let isValid = true;
-
-    Object.keys(formData).forEach(key => {
-      const error = validateField(key, formData[key]);
-      if (error) {
-        newErrors[key] = error;
-        isValid = false;
-      }
-    });
-
-    setErrors(newErrors);
-    return isValid;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitStatus(null);
 
-    if (!validateForm()) {
+    const formErrors = validateFormData(formData);
+    if (Object.keys(formErrors).length > 0) {
+      setErrors(formErrors);
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
+      const data = await submitFeedback(formData);
+      setSubmitStatus({ 
+        type: 'success', 
+        message: data.message || SUCCESS_MESSAGES.FEEDBACK_SUBMITTED 
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSubmitStatus({ type: 'success', message: data.message || 'Feedback submitted successfully!' });
-        setFormData({
-          name: '',
-          email: '',
-          rating: '',
-          message: ''
-        });
-        setErrors({});
-        // Trigger refresh of feedback list
-        if (onSuccess) {
-          onSuccess();
-        }
-      } else {
-        setSubmitStatus({ type: 'error', message: data.error || 'Failed to submit feedback. Please try again.' });
+      setFormData(INITIAL_FORM_DATA);
+      setErrors({});
+      
+      if (onSuccess) {
+        onSuccess();
       }
     } catch (error) {
-      setSubmitStatus({ type: 'error', message: 'Network error. Please check your connection and try again.' });
+      setSubmitStatus({ 
+        type: 'error', 
+        message: error.message || ERROR_MESSAGES.SUBMIT_FAILED 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -233,11 +159,15 @@ const FeedbackForm = ({ onSuccess }) => {
           aria-describedby={errors.rating ? 'error-rating' : undefined}
         >
           <option value="">Select a rating</option>
-          <option value="1" data-testid="rating-option-1">1 - Poor</option>
-          <option value="2" data-testid="rating-option-2">2 - Fair</option>
-          <option value="3" data-testid="rating-option-3">3 - Good</option>
-          <option value="4" data-testid="rating-option-4">4 - Very Good</option>
-          <option value="5" data-testid="rating-option-5">5 - Excellent</option>
+          {RATING_OPTIONS.map((option) => (
+            <option 
+              key={option.value} 
+              value={option.value}
+              data-testid={`rating-option-${option.value}`}
+            >
+              {option.label}
+            </option>
+          ))}
         </select>
         {errors.rating && (
           <span 

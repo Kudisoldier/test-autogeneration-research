@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { fetchFeedbacks, getLatestFeedbacks } from '../utils/api';
+import { formatDate, getRatingStars } from '../utils/format';
+import { ERROR_MESSAGES } from '../utils/constants';
 import './FeedbackList.css';
 
 const FeedbackList = ({ refreshTrigger }) => {
@@ -6,47 +9,23 @@ const FeedbackList = ({ refreshTrigger }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchFeedbacks = async () => {
+  const loadFeedbacks = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/feedback');
-      const data = await response.json();
-
-      if (response.ok) {
-        // Get last 10 feedbacks, sorted by timestamp (newest first)
-        const sortedFeedbacks = data.feedback
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(0, 10);
-        setFeedbacks(sortedFeedbacks);
-      } else {
-        setError('Failed to load feedbacks');
-      }
+      const allFeedbacks = await fetchFeedbacks();
+      const latestFeedbacks = getLatestFeedbacks(allFeedbacks, 10);
+      setFeedbacks(latestFeedbacks);
     } catch (err) {
-      setError('Network error. Please try again later.');
+      setError(err.message || ERROR_MESSAGES.LOAD_NETWORK_ERROR);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFeedbacks();
+    loadFeedbacks();
   }, [refreshTrigger]);
-
-  const getRatingStars = (rating) => {
-    return '★'.repeat(rating) + '☆'.repeat(5 - rating);
-  };
-
-  const formatDate = (timestamp) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   if (loading) {
     return (

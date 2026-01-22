@@ -2,85 +2,68 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 
+const { validateFeedback, getMissingFields } = require('./utils/validation');
+const { createFeedback, addFeedback, getAllFeedbacks, getFeedbackCount } = require('./utils/storage');
+const { sendSuccess, sendError } = require('./utils/responses');
+const { SERVER_CONFIG, STATUS_CODES, ERROR_MESSAGES, SUCCESS_MESSAGES } = require('./utils/constants');
+
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Store feedback (in production, use a database)
-const feedbackStore = [];
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  sendSuccess(res, STATUS_CODES.OK, { status: 'ok' });
 });
 
 // Submit feedback endpoint
 app.post('/api/feedback', (req, res) => {
-  const { name, email, rating, message } = req.body;
+  const validation = validateFeedback(req.body);
 
-  // Validation
-  if (!name || !email || !rating || !message) {
-    return res.status(400).json({
-      error: 'All fields are required',
-      missingFields: {
-        name: !name,
-        email: !email,
-        rating: !rating,
-        message: !message
-      }
-    });
+  if (!validation.isValid) {
+    const missingFields = getMissingFields(req.body);
+    const hasMissingFields = Object.values(missingFields).some(field => field);
+    const errorMessage = hasMissingFields 
+      ? ERROR_MESSAGES.ALL_FIELDS_REQUIRED 
+      : Object.values(validation.errors)[0] || 'Validation failed';
+    
+    return sendError(
+      res,
+      STATUS_CODES.BAD_REQUEST,
+      errorMessage,
+      { missingFields, errors: validation.errors }
+    );
   }
 
-  // Email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return res.status(400).json({
-      error: 'Invalid email format'
+  try {
+    const feedback = createFeedback(req.body);
+    addFeedback(feedback);
+
+    sendSuccess(res, STATUS_CODES.CREATED, {
+      message: SUCCESS_MESSAGES.FEEDBACK_SUBMITTED,
+      feedback
     });
+  } catch (error) {
+    sendError(res, STATUS_CODES.INTERNAL_SERVER_ERROR, 'Internal server error');
   }
-
-  // Rating validation
-  const ratingNum = parseInt(rating);
-  if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
-    return res.status(400).json({
-      error: 'Rating must be a number between 1 and 5'
-    });
-  }
-
-  // Create feedback object
-  const feedback = {
-    id: Date.now().toString(),
-    name: name.trim(),
-    email: email.trim(),
-    rating: ratingNum,
-    message: message.trim(),
-    timestamp: new Date().toISOString()
-  };
-
-  // Store feedback
-  feedbackStore.push(feedback);
-
-  // Return success response
-  res.status(201).json({
-    success: true,
-    message: 'Feedback submitted successfully',
-    feedback: feedback
-  });
 });
 
-// Get all feedback (for testing purposes)
+// Get all feedback endpoint
 app.get('/api/feedback', (req, res) => {
-  res.json({
-    success: true,
-    count: feedbackStore.length,
-    feedback: feedbackStore
-  });
+  try {
+    const feedbacks = getAllFeedbacks();
+    sendSuccess(res, STATUS_CODES.OK, {
+      count: getFeedbackCount(),
+      feedback: feedbacks
+    });
+  } catch (error) {
+    sendError(res, STATUS_CODES.INTERNAL_SERVER_ERROR, 'Failed to retrieve feedbacks');
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(SERVER_CONFIG.PORT, () => {
+  console.log(`Server is running on port ${SERVER_CONFIG.PORT}`);
 });
