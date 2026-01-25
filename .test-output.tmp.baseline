@@ -1,0 +1,5 @@
+
+> nir3-feedback-app@1.0.0 test:server
+> jest --testPathPattern=server --coverage --coverageReporters=json-summary --coverageDirectory .coverage-tmp/integration/1769348383696-eb4c64814373 --passWithNoTests
+
+No tests found, exiting with code 0

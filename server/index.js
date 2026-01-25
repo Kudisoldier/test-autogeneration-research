@@ -64,6 +64,11 @@ app.get('/api/feedback', (req, res) => {
   }
 });
 
-app.listen(SERVER_CONFIG.PORT, () => {
-  console.log(`Server is running on port ${SERVER_CONFIG.PORT}`);
-});
+// Export app for testing
+if (require.main === module) {
+  app.listen(SERVER_CONFIG.PORT, () => {
+    console.log(`Server is running on port ${SERVER_CONFIG.PORT}`);
+  });
+}
+
+module.exports = app;

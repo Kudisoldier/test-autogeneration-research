@@ -3,21 +3,23 @@ node_modules/
 client/node_modules/
 
 # Build outputs
+dist/
+build/
 client/dist/
 client/build/
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
 
 # Environment variables
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
+# Research output
+research-output/
 
 # IDE
 .vscode/
@@ -29,3 +31,21 @@ lerna-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright-output/
+
+# Jest
+.jest-cache/
+
+# Evaluation scratch
+.coverage-tmp/

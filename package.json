@@ -8,18 +8,41 @@
     "server": "nodemon server/index.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
-    "install:all": "npm install && cd client && npm install"
+    "install:all": "npm install && cd client && npm install",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "jest --testPathPattern=server",
+    "test:client": "cd client && npm test",
+    "test:e2e": "npx playwright test",
+    "test:all": "npm run test && npm run test:e2e",
+    "generate:test": "node scripts/generate-tests.js",
+    "generate:all": "node scripts/generate-tests.js --all",
+    "evaluate:tests": "node scripts/evaluate-tests.js",
+    "show:report": "node scripts/show-report.js",
+    "fix:imports": "node scripts/fix-imports.js --all",
+    "list:models": "node scripts/list-models.js"
   },
-  "keywords": ["react", "express", "feedback", "form"],
+  "keywords": [
+    "react",
+    "express",
+    "feedback",
+    "form"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "body-parser": "^1.20.2"
+    "express": "^4.18.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "axios": "^1.13.2",
+    "commander": "^11.1.0",
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.3.1",
+    "jest": "^29.7.0",
+    "node-fetch": "^3.3.2",
     "nodemon": "^3.0.1",
-    "concurrently": "^8.2.2"
+    "supertest": "^6.3.3"
   }
 }

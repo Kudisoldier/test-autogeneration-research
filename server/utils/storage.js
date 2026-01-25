@@ -31,6 +31,14 @@ const getFeedbackCount = () => {
 };
 
 /**
+ * Clears all feedbacks from storage (useful for testing)
+ * @returns {void}
+ */
+const clearFeedbacks = () => {
+  feedbackStore.length = 0;
+};
+
+/**
  * Creates a feedback object with generated ID and timestamp
  * @param {Object} data - Feedback data
  * @returns {Object} - Feedback object with ID and timestamp
@@ -50,5 +58,6 @@ module.exports = {
   addFeedback,
   getAllFeedbacks,
   getFeedbackCount,
-  createFeedback
+  createFeedback,
+  clearFeedbacks
 };
