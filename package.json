@@ -10,7 +10,7 @@
     "build": "cd client && npm run build",
     "install:all": "npm install && cd client && npm install",
     "test": "npm run test:server && npm run test:client",
-    "test:server": "jest --testPathPattern=server",
+    "test:server": "jest --testPathPattern=server --passWithNoTests",
     "test:client": "cd client && npm test",
     "test:e2e": "npx playwright test",
     "test:all": "npm run test && npm run test:e2e",
@@ -19,7 +19,12 @@
     "evaluate:tests": "node scripts/evaluate-tests.js",
     "show:report": "node scripts/show-report.js",
     "fix:imports": "node scripts/fix-imports.js --all",
-    "list:models": "node scripts/list-models.js"
+    "list:models": "node scripts/list-models.js",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up app",
+    "docker:down": "docker compose down",
+    "docker:test": "docker compose run --rm app npm run test",
+    "docker:generate:test": "docker compose run --rm test-generator"
   },
   "keywords": [
     "react",

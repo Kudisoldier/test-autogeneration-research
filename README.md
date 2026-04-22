@@ -23,6 +23,62 @@ App will be available at:
 - `make server` - Start backend only
 - `make client` - Start frontend only
 - `make build` - Build for production
+- `make docker:build` - Build Docker image
+- `make docker:up` - Run app in Docker (`3000`, `3001`)
+- `make docker:down` - Stop Docker services
+- `make docker:test` - Run tests inside Docker
+- `make docker:generate:test` - Generate tests inside Docker
+
+## CI/CD
+
+GitHub Actions workflows are configured:
+
+- `CI` (`.github/workflows/ci.yml`) runs on push and pull request:
+  - installs dependencies (root + client),
+  - runs unit/integration tests (`npm run test`),
+  - builds frontend (`npm run build`).
+- `CD` (`.github/workflows/cd.yml`) runs on push to `main`/`master` and:
+  - builds Docker image,
+  - publishes it to GitHub Container Registry: `ghcr.io/<owner>/<repo>`.
+- `Generate Tests` (`.github/workflows/generate-tests.yml`) runs manually (`workflow_dispatch`):
+  - accepts inputs for `model`, `type`, `target`, `generate_all`,
+  - generates tests using OpenRouter,
+  - evaluates generated tests (`npm run evaluate:tests`),
+  - uploads generated files and evaluation report as GitHub artifacts.
+
+## Docker
+
+### Build and run app
+
+```bash
+npm run docker:build
+npm run docker:up
+```
+
+Application ports:
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:3001`
+
+### Generate tests in Docker
+
+Set API key and run generator container:
+
+```bash
+export OPENROUTER_API_KEY=your_key
+npm run docker:generate:test
+```
+
+By default, generator runs:
+
+```bash
+npm run generate:test -- --model llama-3.1-8b-free --type unit --target FeedbackForm
+```
+
+You can override command via docker compose, for example:
+
+```bash
+docker compose run --rm test-generator npm run generate:test -- --model qwen/qwen-3-coder --type integration --target api
+```
 
 ## API
 

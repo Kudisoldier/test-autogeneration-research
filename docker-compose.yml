@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  test-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - OPENROUTER_API_KEY
+    command: >
+      npm run generate:test -- --model llama-3.1-8b-free --type unit --target FeedbackForm
