@@ -76,6 +76,49 @@ jobs:
           npm run generate:all -- --type "${{ inputs.type }}"
           --output-dir "${{ inputs.output_dir }}"
 
+      - name: Normalize generated paths for artifact upload
+        run: |
+          node -e '
+          const fs = require("fs");
+          const path = require("path");
+
+          const root = process.env.OUTPUT_DIR;
+          const invalidChars = /[":<>|*?\r\n]/g;
+
+          function sanitize(name) {
+            return name.replace(invalidChars, "_");
+          }
+
+          function walkAndRename(dir) {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+            for (const entry of entries) {
+              const oldPath = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                walkAndRename(oldPath);
+              }
+            }
+
+            for (const entry of entries) {
+              const cleanName = sanitize(entry.name);
+              if (cleanName !== entry.name) {
+                const oldPath = path.join(dir, entry.name);
+                const newPath = path.join(dir, cleanName);
+                fs.renameSync(oldPath, newPath);
+              }
+            }
+          }
+
+          if (!fs.existsSync(root)) {
+            console.error(`Output directory does not exist: ${root}`);
+            process.exit(1);
+          }
+
+          walkAndRename(root);
+          '
+        env:
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+
       - name: Upload generated tests artifact
         uses: actions/upload-artifact@v4
         with:
