@@ -1,0 +1,214 @@
+openapi: 3.0.3
+info:
+  title: Feedback API
+  description: >
+    HTTP contract for the Express app in `index.js` in this directory.
+    Success and error bodies use `success: true|false` as implemented in
+    `utils/responses.js`.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Local dev (PORT from env, default 3001)
+    variables:
+      port:
+        default: "3001"
+
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                ok:
+                  value:
+                    success: true
+                    status: ok
+
+  /api/feedback:
+    get:
+      summary: List all feedback entries
+      operationId: listFeedback
+      responses:
+        "200":
+          description: Current in-memory list and count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackListResponse"
+              examples:
+                empty:
+                  value:
+                    success: true
+                    count: 0
+                    feedback: []
+        "500":
+          description: Storage or internal failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      summary: Submit feedback
+      operationId: createFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+            examples:
+              valid:
+                value:
+                  name: Ada Lovelace
+                  email: ada@example.com
+                  rating: 5
+                  message: Great experience overall, would recommend.
+              missingFields:
+                summary: All empty — triggers missing-field style error
+                value:
+                  name: ""
+                  email: ""
+                  rating: ""
+                  message: ""
+              invalidEmail:
+                value:
+                  name: Test
+                  email: not-an-email
+                  rating: 3
+                  message: At least ten chars here.
+      responses:
+        "201":
+          description: Created and stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackCreatedResponse"
+        "400":
+          description: Validation failed (missing or invalid fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "500":
+          description: Unexpected error while persisting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    FeedbackInput:
+      type: object
+      required: [name, email, rating, message]
+      properties:
+        name:
+          type: string
+          description: Trimmed on persist; required non-empty after trim.
+        email:
+          type: string
+          format: email
+          description: Must match server email regex (see `utils/validation.js`).
+        rating:
+          description: Integer 1–5 (coerced with parseInt on persist).
+          oneOf:
+            - type: integer
+              minimum: 1
+              maximum: 5
+            - type: string
+              pattern: "^[1-5]$"
+        message:
+          type: string
+          description: Trimmed on persist; required non-empty after trim.
+
+    FeedbackEntity:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stringified timestamp-based id from server.
+        name:
+          type: string
+        email:
+          type: string
+        rating:
+          type: integer
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      required: [success, status]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        status:
+          type: string
+          example: ok
+
+    FeedbackListResponse:
+      type: object
+      required: [success, count, feedback]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        count:
+          type: integer
+          minimum: 0
+        feedback:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedbackEntity"
+
+    FeedbackCreatedResponse:
+      type: object
+      required: [success, message, feedback]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        message:
+          type: string
+          example: Feedback submitted successfully
+        feedback:
+          $ref: "#/components/schemas/FeedbackEntity"
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          properties:
+            missingFields:
+              type: object
+              description: Flags per field when any required value is empty.
+              additionalProperties:
+                type: boolean
+            errors:
+              type: object
+              description: Field-level validation messages from `validateFeedback`.
+              additionalProperties:
+                type: string
