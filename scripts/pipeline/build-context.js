@@ -171,6 +171,24 @@ function mergeCaps(manifest) {
   return caps;
 }
 
+/**
+ * CommonJS require string from test file location to source module (no extension).
+ * e.g. test `server/utils/__tests__/x.test.js`, module `server/utils/validation.js` → `../validation`
+ * @param {string} primaryTestFileRepoRel
+ * @param {string} targetModuleRepoRel
+ * @returns {string|null}
+ */
+function commonJsRequireFromTestToModule(primaryTestFileRepoRel, targetModuleRepoRel) {
+  const test = primaryTestFileRepoRel.replace(/\\/g, '/');
+  const mod = targetModuleRepoRel.replace(/\\/g, '/');
+  if (!test || !mod || !mod.endsWith('.js')) return null;
+  const fromDir = path.posix.dirname(test);
+  let rel = path.posix.relative(fromDir, mod);
+  if (!rel) return null;
+  rel = rel.replace(/\.js$/i, '');
+  return rel;
+}
+
 function fileRolesForStage(stage) {
   if (stage === 'planner') return new Set(['planner_only', 'both']);
   return new Set(['generator_only', 'both']);
@@ -564,7 +582,23 @@ async function buildGeneratorUserPrompt(projectRoot, manifest, plan, resolvedCon
     ? '\n\nReference each implemented scenario with a comment like: // plan-case: <id>\n'
     : '';
 
-  return `You must implement the tests as a SINGLE complete test file that will be written to (repo-relative):\n${outFile}${planCaseLine}\n\n## APPROVED_TEST_PLAN (JSON)\n\n\`\`\`json\n${planJson}\n\`\`\`\n\n## CODE_AND_CONTRACT_CONTEXT\n\n${bundle}\n`;
+  let importHint = '';
+  if (
+    manifest.test_level === 'unit_server' &&
+    typeof manifest.target_module === 'string' &&
+    manifest.target_module.endsWith('.js')
+  ) {
+    const reqPath = commonJsRequireFromTestToModule(outFile, manifest.target_module);
+    if (reqPath) {
+      importHint =
+        `\n\n## REQUIRED_RELATIVE_IMPORT (unit_server, CommonJS)\n\n` +
+        `The test file path is \`${outFile}\`. The module under test is \`${manifest.target_module}\`.\n` +
+        `You MUST load it with this exact relative specifier (do not add an extra \`../\`; do not guess):\n` +
+        `\`require('${reqPath}')\`\n`;
+    }
+  }
+
+  return `You must implement the tests as a SINGLE complete test file that will be written to (repo-relative):\n${outFile}${planCaseLine}${importHint}\n\n## APPROVED_TEST_PLAN (JSON)\n\n\`\`\`json\n${planJson}\n\`\`\`\n\n## CODE_AND_CONTRACT_CONTEXT\n\n${bundle}\n`;
 }
 
 module.exports = {
@@ -573,6 +607,7 @@ module.exports = {
   validateManifest,
   validatePlan,
   truncateText,
+  commonJsRequireFromTestToModule,
   buildContextBundle,
   buildGeneratorUserPrompt,
   buildDynamicPromptTail,
