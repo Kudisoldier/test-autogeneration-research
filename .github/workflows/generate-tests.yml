@@ -7,31 +7,24 @@ on:
         description: "OpenRouter model (short name or full id)"
         required: true
         default: "llama-3.1-8b-free"
-      type:
-        description: "Test type"
+      manifest:
+        description: "Pipeline manifest path"
         required: true
         type: choice
         options:
-          - unit
-          - integration
-          - e2e
-        default: unit
-      target:
-        description: "Target (FeedbackForm, FeedbackList, validation, api, feedback-form)"
+          - specs/pipeline/examples/unit_ui.manifest.json
+          - specs/pipeline/examples/unit_server.manifest.json
+          - specs/pipeline/examples/integration_ui.manifest.json
+          - specs/pipeline/examples/integration_server.manifest.json
+          - specs/pipeline/examples/e2e.manifest.json
+        default: specs/pipeline/examples/unit_ui.manifest.json
+      run_id:
+        description: "Optional run directory name under research-output/runs"
         required: false
-        default: "FeedbackForm"
-      generate_all:
-        description: "Generate all targets for selected type"
-        required: true
-        type: boolean
-        default: false
-      output_dir:
-        description: "Output directory for generated files"
-        required: true
-        default: "research-output"
+        default: ""
 
 jobs:
-  generate:
+  run-pipeline:
     runs-on: ubuntu-latest
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -62,150 +55,79 @@ jobs:
         run: npm ci
         working-directory: client
 
-      - name: Generate tests for selected target
-        if: ${{ inputs.generate_all == false }}
-        run: >
-          npm run generate:test -- --model "${{ inputs.model }}"
-          --type "${{ inputs.type }}"
-          --target "${{ inputs.target }}"
-          --output-dir "${{ inputs.output_dir }}"
-
-      - name: Generate tests for all targets
-        if: ${{ inputs.generate_all == true }}
-        run: >
-          npm run generate:all -- --type "${{ inputs.type }}"
-          --output-dir "${{ inputs.output_dir }}"
-
-      - name: Normalize generated paths for artifact upload
+      - name: Resolve run metadata
+        id: run_meta
         run: |
-          node -e '
-          const fs = require("fs");
-          const path = require("path");
+          RUN_ID="${{ inputs.run_id }}"
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID="run-${{ github.run_id }}"
+          fi
+          RUN_DIR="research-output/runs/${RUN_ID}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
 
-          const root = process.env.OUTPUT_DIR;
-          const invalidChars = /[":<>|*?\r\n]/g;
-
-          function sanitize(name) {
-            return name.replace(invalidChars, "_");
-          }
-
-          function walkAndRename(dir) {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-            for (const entry of entries) {
-              const oldPath = path.join(dir, entry.name);
-              if (entry.isDirectory()) {
-                walkAndRename(oldPath);
-              }
-            }
-
-            for (const entry of entries) {
-              const cleanName = sanitize(entry.name);
-              if (cleanName !== entry.name) {
-                const oldPath = path.join(dir, entry.name);
-                const newPath = path.join(dir, cleanName);
-                fs.renameSync(oldPath, newPath);
-              }
-            }
-          }
-
-          if (!fs.existsSync(root)) {
-            console.error(`Output directory does not exist: ${root}`);
-            process.exit(1);
-          }
-
-          walkAndRename(root);
-          '
-        env:
-          OUTPUT_DIR: ${{ inputs.output_dir }}
-
-      - name: Upload generated tests artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-tests-${{ github.run_id }}
-          path: ${{ inputs.output_dir }}
-          if-no-files-found: error
-
-  evaluate:
-    runs-on: ubuntu-latest
-    needs: generate
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            client/package-lock.json
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Install client dependencies
-        run: npm ci
-        working-directory: client
-
-      - name: Download generated tests artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: generated-tests-${{ github.run_id }}
-          path: ${{ inputs.output_dir }}
-
-      - name: Evaluate generated tests
-        run: npm run evaluate:tests -- "${{ inputs.output_dir }}"
+      - name: Run pipeline (plan -> generate -> verify -> report)
+        run: >
+          npm run pipeline:all -- --manifest "${{ inputs.manifest }}"
+          --model "${{ inputs.model }}"
+          --run-id "${{ steps.run_meta.outputs.run_id }}"
+          --run-tests
 
       - name: Publish evaluation summary
         run: |
           node -e '
           const fs = require("fs");
-          const reportPath = `${process.env.OUTPUT_DIR}/evaluation-report.json`;
-          if (!fs.existsSync(reportPath)) {
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## Evaluation Summary\n\nReport file was not found.\n");
-            process.exit(0);
+          const runDir = process.env.RUN_DIR;
+          const reportPath = `${runDir}/evaluation-report.json`;
+          const reportMdPath = `${runDir}/report.md`;
+          let md = "## Pipeline Summary\n\n";
+
+          if (fs.existsSync(reportPath)) {
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+            const summary = report.summary || {};
+            const successRate = summary.totalTests > 0
+              ? ((summary.totalPassed / summary.totalTests) * 100).toFixed(1)
+              : "0.0";
+
+            md += "| Metric | Value |\n";
+            md += "|---|---:|\n";
+            md += `| Files evaluated | ${summary.total || 0} |\n`;
+            md += `| Files executed | ${summary.runs || 0} |\n`;
+            md += `| Passing files | ${summary.passes || 0} |\n`;
+            md += `| Total test cases | ${summary.totalTests || 0} |\n`;
+            md += `| Passed test cases | ${summary.totalPassed || 0} |\n`;
+            md += `| Failed test cases | ${summary.totalFailed || 0} |\n`;
+            md += `| Success rate | ${successRate}% |\n\n`;
+          } else {
+            md += "Evaluation report was not found.\n\n";
           }
 
-          const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
-          const summary = report.summary || {};
-          const successRate = summary.totalTests > 0
-            ? ((summary.totalPassed / summary.totalTests) * 100).toFixed(1)
-            : "0.0";
-
-          let md = "## Evaluation Summary\n\n";
-          md += "| Metric | Value |\n";
-          md += "|---|---:|\n";
-          md += `| Files evaluated | ${summary.total || 0} |\n`;
-          md += `| Files executed | ${summary.runs || 0} |\n`;
-          md += `| Passing files | ${summary.passes || 0} |\n`;
-          md += `| Total test cases | ${summary.totalTests || 0} |\n`;
-          md += `| Passed test cases | ${summary.totalPassed || 0} |\n`;
-          md += `| Failed test cases | ${summary.totalFailed || 0} |\n`;
-          md += `| Success rate | ${successRate}% |\n\n`;
-
-          const byType = report.byType || {};
-          const types = Object.keys(byType);
-          if (types.length > 0) {
-            md += "### By Type\n\n";
-            md += "| Type | Files | Passing Files | Tests | Passed | Failed | Success Rate |\n";
-            md += "|---|---:|---:|---:|---:|---:|---:|\n";
-            for (const type of types) {
-              const s = byType[type] || {};
-              const typeRate = s.testCount > 0 ? ((s.passCount / s.testCount) * 100).toFixed(1) : "0.0";
-              md += `| ${type} | ${s.total || 0} | ${s.passes || 0} | ${s.testCount || 0} | ${s.passCount || 0} | ${s.failCount || 0} | ${typeRate}% |\n`;
-            }
+          if (fs.existsSync(reportMdPath)) {
+            md += `Reporter output: ${reportMdPath}\n\n`;
+          } else {
+            md += "Reporter markdown was not found.\n\n";
           }
 
+          md += `Run directory: ${runDir}\n`;
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
           '
         env:
-          OUTPUT_DIR: ${{ inputs.output_dir }}
+          RUN_DIR: ${{ steps.run_meta.outputs.run_dir }}
 
-      - name: Upload evaluation report artifact
+      - name: Upload pipeline artifacts (metrics + report)
         uses: actions/upload-artifact@v4
         with:
-          name: evaluation-report-${{ github.run_id }}
-          path: ${{ inputs.output_dir }}/evaluation-report.json
-          if-no-files-found: warn
+          name: pipeline-artifacts-${{ github.run_id }}
+          path: |
+            ${{ steps.run_meta.outputs.run_dir }}/context_manifest.json
+            ${{ steps.run_meta.outputs.run_dir }}/test_plan.json
+            ${{ steps.run_meta.outputs.run_dir }}/test_plan.md
+            ${{ steps.run_meta.outputs.run_dir }}/plan.meta.json
+            ${{ steps.run_meta.outputs.run_dir }}/generate.meta.json
+            ${{ steps.run_meta.outputs.run_dir }}/verify.log
+            ${{ steps.run_meta.outputs.run_dir }}/evaluation-report.json
+            ${{ steps.run_meta.outputs.run_dir }}/jest-results.json
+            ${{ steps.run_meta.outputs.run_dir }}/report.md
+            ${{ steps.run_meta.outputs.run_dir }}/report.meta.json
+            ${{ steps.run_meta.outputs.run_dir }}/generated/**
+          if-no-files-found: error

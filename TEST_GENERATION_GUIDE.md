@@ -218,6 +218,16 @@ npm run pipeline:all -- --manifest specs/pipeline/examples/unit_ui.manifest.json
   [--preset <name>] [--planner-temperature <n>] [--generator-temperature <n>] [--no-json-mode] [--run-tests]
 ```
 
+**GitHub Actions (`.github/workflows/generate-tests.yml`):**
+- Manual dispatch now runs `pipeline:all` (plan -> generate -> verify -> report) with `--run-tests`.
+- Select a manifest input from:
+  - `specs/pipeline/examples/unit_ui.manifest.json`
+  - `specs/pipeline/examples/unit_server.manifest.json`
+  - `specs/pipeline/examples/integration_ui.manifest.json`
+  - `specs/pipeline/examples/integration_server.manifest.json`
+  - `specs/pipeline/examples/e2e.manifest.json`
+- Artifacts are uploaded from `research-output/runs/<run_id>/` and include metrics/report outputs: `plan.meta.json`, `generate.meta.json`, `verify.log`, `evaluation-report.json`, `jest-results.json`, `report.md`, `report.meta.json`, plus plan files and generated tests.
+
 CLI overrides win over values in the manifest `generation` block; presets live in `scripts/pipeline/presets.json`.
 
 Artifacts per run directory: `context_manifest.json`, `test_plan.json`, optional `test_plan.md`, `plan.meta.json` (includes `resolved_generation` and OpenAPI subset meta when applicable), `generate.meta.json`, `generated/<repo-relative-path>`, `verify.log`. Verify runs **`node --check`** only on paths where Node can parse the file (not **`client/**/*.js`** or **`.jsx`**, where ESM/JSX is validated by Jest when `--run-tests` is used). Verify also checks **plan-case coverage** (`// plan-case: <id>` for every plan case when `require_plan_case_comments` is true), rejects unknown plan-case ids, and enforces **no ESM in server** paths (see `scripts/pipeline/verify-rules.json`). Exit code **2** = manifest/plan validation; **3** = verify (syntax, forbidden patterns, plan-case checks, or server ESM guard).
