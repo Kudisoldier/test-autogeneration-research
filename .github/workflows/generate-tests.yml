@@ -80,6 +80,9 @@ jobs:
           const runDir = process.env.RUN_DIR;
           const reportPath = `${runDir}/evaluation-report.json`;
           const reportMdPath = `${runDir}/report.md`;
+          const reportMetaPath = `${runDir}/report.meta.json`;
+          const planMetaPath = `${runDir}/plan.meta.json`;
+          const generateMetaPath = `${runDir}/generate.meta.json`;
           let md = "## Pipeline Summary\n\n";
 
           if (fs.existsSync(reportPath)) {
@@ -98,12 +101,69 @@ jobs:
             md += `| Passed test cases | ${summary.totalPassed || 0} |\n`;
             md += `| Failed test cases | ${summary.totalFailed || 0} |\n`;
             md += `| Success rate | ${successRate}% |\n\n`;
+            md += "| Additional Metric | Value |\n";
+            md += "|---|---:|\n";
+            md += `| Flaky files | ${summary.flakyFiles || 0} |\n`;
+            md += `| Flaky failures | ${summary.flakyFailures || 0} |\n`;
+            md += `| Flaky test rate | ${((summary.flakyTestRate || 0) * 100).toFixed(1)}% |\n`;
+            md += `| Avg TTG (s) | ${(summary.ttgSecondsAvg || 0).toFixed(3)} |\n\n`;
           } else {
             md += "Evaluation report was not found.\n\n";
           }
 
+          if (fs.existsSync(reportMetaPath)) {
+            const reportMeta = JSON.parse(fs.readFileSync(reportMetaPath, "utf8"));
+            const coverage = reportMeta.coverage_totals || {};
+            const implemented = Number(coverage.implemented || 0);
+            const passed = Number(coverage.passed || 0);
+            const coverageRate = implemented > 0 ? ((passed / implemented) * 100).toFixed(1) : "0.0";
+
+            md += "### Coverage\n\n";
+            md += "| Metric | Value |\n";
+            md += "|---|---:|\n";
+            md += `| Plan cases total | ${coverage.total || 0} |\n`;
+            md += `| Implemented | ${implemented} |\n`;
+            md += `| Passed | ${passed} |\n`;
+            md += `| Failed | ${coverage.failed || 0} |\n`;
+            md += `| Not run | ${coverage.notRun || 0} |\n`;
+            md += `| Not implemented | ${coverage.notImplemented || 0} |\n`;
+            md += `| Pending | ${coverage.pending || 0} |\n`;
+            md += `| Coverage pass rate | ${coverageRate}% |\n\n`;
+          } else {
+            md += "Coverage data (`report.meta.json`) was not found.\n\n";
+          }
+
+          const readSeconds = (filePath) => {
+            if (!fs.existsSync(filePath)) return null;
+            try {
+              const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+              return typeof parsed.seconds === "number" ? parsed.seconds : null;
+            } catch {
+              return null;
+            }
+          };
+          const planSeconds = readSeconds(planMetaPath);
+          const generateSeconds = readSeconds(generateMetaPath);
+          const totalGenSeconds =
+            (planSeconds != null || generateSeconds != null)
+              ? (planSeconds || 0) + (generateSeconds || 0)
+              : null;
+
+          md += "### Time To Generate\n\n";
+          md += "| Stage | Seconds |\n";
+          md += "|---|---:|\n";
+          md += `| Plan | ${planSeconds != null ? planSeconds.toFixed(3) : "n/a"} |\n`;
+          md += `| Generate | ${generateSeconds != null ? generateSeconds.toFixed(3) : "n/a"} |\n`;
+          md += `| Plan + Generate | ${totalGenSeconds != null ? totalGenSeconds.toFixed(3) : "n/a"} |\n\n`;
+
           if (fs.existsSync(reportMdPath)) {
-            md += `Reporter output: ${reportMdPath}\n\n`;
+            const reportMarkdown = fs.readFileSync(reportMdPath, "utf8").trim();
+            md += "### Report\n\n";
+            if (reportMarkdown.length > 0) {
+              md += reportMarkdown + "\n\n";
+            } else {
+              md += "Report markdown file is empty.\n\n";
+            }
           } else {
             md += "Reporter markdown was not found.\n\n";
           }
