@@ -1,0 +1,40 @@
+{
+  "forbidden": [
+    {
+      "id": "no_describe_only",
+      "pattern": "describe\\.only\\(",
+      "message": "describe.only is not allowed in generated tests",
+      "globs": ["**/*.js", "**/*.jsx"]
+    },
+    {
+      "id": "no_test_only",
+      "pattern": "test\\.only\\(",
+      "message": "test.only is not allowed in generated tests",
+      "globs": ["**/*.js", "**/*.jsx"]
+    },
+    {
+      "id": "no_it_only",
+      "pattern": "it\\.only\\(",
+      "message": "it.only is not allowed in generated tests",
+      "globs": ["**/*.js", "**/*.jsx"]
+    },
+    {
+      "id": "no_waitForTimeout",
+      "pattern": "waitForTimeout\\(",
+      "message": "Avoid page.waitForTimeout / waitForTimeout; use locators and assertions",
+      "globs": ["**/*.spec.js", "**/*.spec.jsx", "**/e2e/**/*.js"]
+    },
+    {
+      "id": "no_esm_import_in_server",
+      "pattern": "^\\s*import\\s",
+      "message": "Server tests must use CommonJS (require/module.exports), not ESM import",
+      "globs": ["server/**/*.js"]
+    },
+    {
+      "id": "no_esm_export_in_server",
+      "pattern": "^\\s*export\\s",
+      "message": "Server tests must use CommonJS (require/module.exports), not ESM export",
+      "globs": ["server/**/*.js"]
+    }
+  ]
+}

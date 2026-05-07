@@ -1,0 +1,40 @@
+{
+  "schema_version": "1",
+  "test_level": "integration_server",
+  "target": "api",
+  "generation": {
+    "preset": "balanced",
+    "selector_policy": "none",
+    "require_plan_case_comments": true,
+    "emit_plan_markdown": true
+  },
+  "risks": ["Shared in-memory storage between tests"],
+  "invariants": ["Health endpoint always returns success true when up"],
+  "openapi": {
+    "path": "server/openapi.yaml",
+    "operation_ids": ["getHealth", "listFeedback", "createFeedback"]
+  },
+  "env_template": "BASE_URL=http://127.0.0.1:<PORT>\\nPORT=3001 (default)",
+  "requirements": {
+    "path": "specs/pipeline/examples/sample-requirements.md",
+    "planner_mode": "excerpt"
+  },
+  "policies": {
+    "max_prompt_chars": {
+      "total": 200000,
+      "per_file": 60000,
+      "openapi": 120000,
+      "requirements": 60000
+    },
+    "forbidden_path_globs": []
+  },
+  "files": [
+    {
+      "path": "server/index.js",
+      "role": "both"
+    }
+  ],
+  "output_policy": {
+    "primary_test_file": "server/__tests__/api.pipeline.example.test.js"
+  }
+}

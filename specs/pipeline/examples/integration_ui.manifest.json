@@ -1,0 +1,52 @@
+{
+  "schema_version": "1",
+  "test_level": "integration_ui",
+  "target": "FeedbackForm_api",
+  "generation": {
+    "preset": "balanced",
+    "selector_policy": "role-first",
+    "require_plan_case_comments": true,
+    "emit_plan_markdown": true
+  },
+  "openapi": {
+    "path": "server/openapi.yaml",
+    "operation_ids": ["createFeedback", "listFeedback"]
+  },
+  "env_template": "VITE_API_URL or client uses relative /api — tests mock fetch",
+  "screens": [
+    {
+      "id": "FeedbackPage",
+      "operation_ids": ["createFeedback", "listFeedback"]
+    }
+  ],
+  "related_components": [
+    "client/src/components/FeedbackForm.jsx",
+    "client/src/utils/api.js"
+  ],
+  "requirements": {
+    "path": "specs/pipeline/examples/sample-requirements.md",
+    "planner_mode": "excerpt"
+  },
+  "policies": {
+    "max_prompt_chars": {
+      "total": 200000,
+      "per_file": 80000,
+      "openapi": 120000,
+      "requirements": 60000
+    },
+    "forbidden_path_globs": ["client/src/App.jsx", "client/src/main.jsx"]
+  },
+  "files": [
+    {
+      "path": "client/src/components/FeedbackForm.jsx",
+      "role": "both"
+    },
+    {
+      "path": "client/src/utils/api.js",
+      "role": "both"
+    }
+  ],
+  "output_policy": {
+    "primary_test_file": "client/src/components/__tests__/FeedbackForm.integration.pipeline.example.test.jsx"
+  }
+}

@@ -1,0 +1,9 @@
+[minimized page snapshot — example]
+main [ref=e1]:
+  heading "Feedback" [level=1]
+  textbox "Name" [ref=e2]
+  textbox "Email" [ref=e3]
+  combobox "Rating" [ref=e4]
+  textbox "Message" [ref=e5]
+  button "Submit" [ref=e6] [cursor=pointer]
+  list "Feedback list" [ref=e7]

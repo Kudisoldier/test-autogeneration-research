@@ -1,0 +1,36 @@
+{
+  "schema_version": "1",
+  "test_level": "unit_server",
+  "target": "validation",
+  "generation": {
+    "preset": "balanced",
+    "selector_policy": "none",
+    "require_plan_case_comments": true,
+    "emit_plan_markdown": true
+  },
+  "target_module": "server/utils/validation.js",
+  "risks": ["Rating coercion edge cases"],
+  "invariants": ["Trim strings before empty check"],
+  "requirements": {
+    "path": "specs/pipeline/examples/sample-requirements.md",
+    "planner_mode": "excerpt"
+  },
+  "policies": {
+    "max_prompt_chars": {
+      "total": 200000,
+      "per_file": 90000,
+      "openapi": 120000,
+      "requirements": 60000
+    },
+    "forbidden_path_globs": []
+  },
+  "files": [
+    {
+      "path": "server/utils/validation.js",
+      "role": "both"
+    }
+  ],
+  "output_policy": {
+    "primary_test_file": "server/utils/__tests__/validation.pipeline.example.test.js"
+  }
+}

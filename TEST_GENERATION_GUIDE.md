@@ -189,6 +189,43 @@ When comparing different LLM-generated tests, consider:
 5. **Best Practices**: Do tests follow testing best practices?
 6. **Execution**: Do all tests pass?
 
+## Three-stage pipeline (planner → generator → verify)
+
+Structured generation uses a **context manifest** (`specs/pipeline/context-manifest.schema.json`) with a required **`generation`** block (preset, planner/generator `temperature` / `top_p` / `max_tokens`, `selector_policy`, `emit_plan_markdown`, `require_plan_case_comments`), a machine-readable **plan** (`specs/pipeline/test-plan.schema.json`), optional **`test_plan.md`**, and example manifests under [`specs/pipeline/examples/`](specs/pipeline/examples/).
+
+**Module syntax (generator + verify):** `unit_server` / `integration_server` must use **CommonJS** (`require` / `module.exports`) because root Jest runs server tests without Babel. `unit_ui`, `integration_ui`, and `e2e` should use **ESM** (`import` / `export`) — client tests use babel-jest; e2e uses Playwright. Verify rejects top-level `import` / `export` lines in generated files under `generated/server/**/*.js` (glob `server/**/*.js` relative to `generated/`).
+
+| Legacy `generate-tests.js --type` | `test_level` in manifest |
+|-----------------------------------|---------------------------|
+| `unit` (client components/utils)  | `unit_ui` or `unit_server` (server modules use `unit_server`) |
+| `integration` (API)               | `integration_server` |
+| (not previously split)            | `integration_ui` — OpenAPI + only components/hooks that call listed `operation_ids` |
+| `e2e`                             | `e2e` — planner/generator use `requirements` + `page_snapshot` |
+
+**Commands** (require `OPENROUTER_API_KEY` for LLM stages):
+
+```bash
+npm run pipeline:plan -- --manifest specs/pipeline/examples/unit_ui.manifest.json --model <openrouter_model_id> \
+  [--preset strict|balanced|exploratory] [--planner-temperature <n>] [--planner-top-p <n>] [--planner-max-tokens <n>] \
+  [--no-json-mode] [--selector-policy auto|data-testid|role-first|none] [--no-plan-markdown] [--no-plan-case-comments]
+
+npm run pipeline:generate -- --run-dir research-output/runs/<id> --model <openrouter_model_id> \
+  [--preset strict|balanced|exploratory] [--generator-temperature <n>] [--generator-top-p <n>] [--generator-max-tokens <n>] \
+  [--selector-policy <p>] [--no-plan-case-comments]
+
+npm run pipeline:verify -- --run-dir research-output/runs/<id> [--run-tests]
+npm run pipeline:all -- --manifest specs/pipeline/examples/unit_ui.manifest.json --model <openrouter_model_id> \
+  [--preset <name>] [--planner-temperature <n>] [--generator-temperature <n>] [--no-json-mode] [--run-tests]
+```
+
+CLI overrides win over values in the manifest `generation` block; presets live in `scripts/pipeline/presets.json`.
+
+Artifacts per run directory: `context_manifest.json`, `test_plan.json`, optional `test_plan.md`, `plan.meta.json` (includes `resolved_generation` and OpenAPI subset meta when applicable), `generate.meta.json`, `generated/<repo-relative-path>`, `verify.log`. Verify runs **`node --check`** only on paths where Node can parse the file (not **`client/**/*.js`** or **`.jsx`**, where ESM/JSX is validated by Jest when `--run-tests` is used). Verify also checks **plan-case coverage** (`// plan-case: <id>` for every plan case when `require_plan_case_comments` is true), rejects unknown plan-case ids, and enforces **no ESM in server** paths (see `scripts/pipeline/verify-rules.json`). Exit code **2** = manifest/plan validation; **3** = verify (syntax, forbidden patterns, plan-case checks, or server ESM guard).
+
+**`--run-tests` and `evaluation-report.json`:** With `pipeline:verify --run-tests` (or `pipeline:all ... --run-tests`), verify stages generated files into the repo, runs Jest with `--json`, and writes **`evaluation-report.json`** in the run directory (same shape as `scripts/evaluate-tests.js`: `summary`, `byModel`, `byModelType`, `byType`, `details`). **Model** comes from `generate.meta.json` (fallback `plan.meta.json`). **Type** bucket is derived from `context_manifest.json` → `test_level`: `unit_*` → `unit`, `integration_*` → `integration`, `e2e` → `e2e`. **Per-file `ttgSeconds`** in `details` is `plan.meta.json` `seconds` + `generate.meta.json` `seconds` (wall time for plan + generate for that run). Jest **assertion failures** are reflected in the report (`passes`, `failCount`) but **do not** change verify’s exit code; verify still exits **3** only on syntax/forbidden/plan-case failures or staging I/O errors. **E2E:** `test_level: e2e` is not executed in verify (`runs: false` in details, message in `errorOutput`); use Playwright separately. For legacy layouts under `research-output/<model>/<type>/...`, continue using `node scripts/evaluate-tests.js [dir]`.
+
+The legacy script `npm run generate:test` remains a single-shot path until deprecated.
+
 ## Notes
 
 - The application uses in-memory storage (resets on server restart)

@@ -129,26 +129,32 @@ async function generateTest(model, prompt, options = {}) {
     temperature = 0.7,
     maxTokens = 16000, // Increased for longer test files
     systemPrompt = getDefaultSystemPrompt(),
+    topP,
   } = options;
+
+  const bodyTest = {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    temperature,
+    max_tokens: maxTokens,
+  };
+  if (topP != null && Number.isFinite(topP)) {
+    bodyTest.top_p = topP;
+  }
 
   try {
     const response = await axios.post(
       OPENROUTER_API_URL,
-      {
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature,
-        max_tokens: maxTokens,
-      },
+      bodyTest,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -183,6 +189,105 @@ async function generateTest(model, prompt, options = {}) {
       throw new Error(`Error: ${error.message}`);
     }
   }
+}
+
+function stripJsonFence(text) {
+  let t = (text || '').trim();
+  if (t.startsWith('```')) {
+    t = t.replace(/^```(?:json)?\s*\n?/i, '');
+    t = t.replace(/\n?```\s*$/i, '');
+  }
+  return t.trim();
+}
+
+/**
+ * Chat completion returning raw assistant text (for JSON plans).
+ *
+ * @param {string} model
+ * @param {{ systemPrompt: string, userContent: string }} payload
+ * @param {Object} [options]
+ * @param {boolean} [options.jsonObject] request OpenAI-style json_object mode when supported
+ */
+async function generateJson(model, payload, options = {}) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in .env file');
+  }
+
+  const {
+    temperature = 0.2,
+    maxTokens = 8192,
+    jsonObject = true,
+    timeout = 120000,
+    topP,
+  } = options;
+
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: payload.systemPrompt },
+      { role: 'user', content: payload.userContent },
+    ],
+    temperature,
+    max_tokens: maxTokens,
+  };
+  if (topP != null && Number.isFinite(topP)) {
+    body.top_p = topP;
+  }
+  if (jsonObject) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  try {
+    const response = await axios.post(OPENROUTER_API_URL, body, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://github.com/your-repo',
+        'X-Title': 'Test Generation Research',
+      },
+      timeout,
+    });
+
+    if (response.data.error) {
+      if (response.status === 429 || response.data.error.code === 429) {
+        const retryAfter = response.headers['retry-after'] || 5;
+        throw new Error(`RATE_LIMIT:${retryAfter}:${response.data.error.message}`);
+      }
+      throw new Error(`OpenRouter API error: ${response.data.error.message}`);
+    }
+
+    return stripJsonFence(response.data.choices[0]?.message?.content || '');
+  } catch (error) {
+    if (error.response) {
+      throw new Error(`OpenRouter API error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    }
+    if (error.request) {
+      throw new Error(`Network error: No response from OpenRouter API. ${error.message}`);
+    }
+    throw new Error(`Error: ${error.message}`);
+  }
+}
+
+async function generateJsonWithRetry(model, payload, options = {}, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await generateJson(model, payload, options);
+    } catch (error) {
+      if (error.message.startsWith('RATE_LIMIT:')) {
+        const [, retryAfter] = error.message.split(':');
+        const waitTime = parseInt(retryAfter, 10) * 1000;
+        if (attempt < maxRetries) {
+          console.log(`Rate limited. Waiting ${retryAfter}s before retry ${attempt + 1}/${maxRetries}...`);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+  throw new Error('generateJsonWithRetry: exhausted retries');
 }
 
 /**
@@ -333,6 +438,10 @@ async function generateTestForTarget(model, testType, target, options = {}) {
 
 module.exports = {
   generateTest,
+  generateTestWithRetry,
+  generateJson,
+  generateJsonWithRetry,
+  stripJsonFence,
   MODELS,
   getAvailableModels,
   loadTestSpecification,
@@ -434,7 +543,7 @@ Generate the COMPLETE test file now:`;
 function buildE2ETestPrompt(target, sourceCode, spec, guide) {
   return `Generate a comprehensive E2E test file for: ${target}
 
-IMPORT PATHS (CRITICAL - Tests are in client/tests/e2e/ folder):
+IMPORT PATHS (CRITICAL - Tests are in tests/e2e/ at repo root; use Playwright from @playwright/test):
 - Playwright imports: import { test, expect } from '@playwright/test'
 - Use standard Playwright imports, no relative paths needed for framework
 

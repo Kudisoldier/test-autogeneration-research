@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "test_level": "unit_ui",
+  "target": "FeedbackForm",
+  "generation": {
+    "preset": "balanced",
+    "selector_policy": "data-testid",
+    "require_plan_case_comments": true,
+    "emit_plan_markdown": true
+  },
+  "risks": ["Async submit and validation race"],
+  "invariants": ["Invalid email never calls API"],
+  "requirements": {
+    "path": "specs/pipeline/examples/sample-requirements.md",
+    "planner_mode": "excerpt"
+  },
+  "policies": {
+    "max_prompt_chars": {
+      "total": 200000,
+      "per_file": 90000,
+      "openapi": 120000,
+      "requirements": 60000
+    },
+    "forbidden_path_globs": ["client/src/App.jsx"]
+  },
+  "files": [
+    {
+      "path": "client/src/components/FeedbackForm.jsx",
+      "role": "both"
+    }
+  ],
+  "output_policy": {
+    "primary_test_file": "client/src/components/__tests__/FeedbackForm.pipeline.example.test.jsx"
+  }
+}

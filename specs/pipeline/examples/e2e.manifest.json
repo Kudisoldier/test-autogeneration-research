@@ -1,0 +1,39 @@
+{
+  "schema_version": "1",
+  "test_level": "e2e",
+  "target": "feedback-form",
+  "generation": {
+    "preset": "balanced",
+    "selector_policy": "auto",
+    "require_plan_case_comments": true,
+    "emit_plan_markdown": true
+  },
+  "risks": ["Timing on list refresh"],
+  "invariants": ["Submit button disabled or loading during submit"],
+  "requirements": {
+    "path": "specs/pipeline/examples/sample-requirements.md",
+    "planner_mode": "full"
+  },
+  "page_snapshot": {
+    "path": "specs/pipeline/examples/sample-page-snapshot.txt",
+    "format": "a11y"
+  },
+  "policies": {
+    "max_prompt_chars": {
+      "total": 200000,
+      "per_file": 60000,
+      "openapi": 120000,
+      "requirements": 80000
+    },
+    "forbidden_path_globs": []
+  },
+  "files": [
+    {
+      "path": "client/src/components/FeedbackForm.jsx",
+      "role": "planner_only"
+    }
+  ],
+  "output_policy": {
+    "primary_test_file": "tests/e2e/feedback-form.pipeline.example.spec.js"
+  }
+}

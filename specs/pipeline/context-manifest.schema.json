@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nir3.local/schemas/context-manifest.schema.json",
+  "title": "Test generation context manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "test_level",
+    "target",
+    "output_policy",
+    "policies",
+    "files",
+    "generation"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1" },
+    "run_id": { "type": "string", "description": "Optional; filled by CLI when omitted." },
+    "test_level": {
+      "type": "string",
+      "enum": [
+        "unit_server",
+        "unit_ui",
+        "integration_server",
+        "integration_ui",
+        "e2e"
+      ]
+    },
+    "target": { "type": "string", "description": "Human-readable target name or id." },
+    "target_module": {
+      "type": "string",
+      "description": "For unit_server: module path or API surface hint."
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Planner-only risks for unit_server / flows."
+    },
+    "invariants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Planner-only invariants."
+    },
+    "generation": {
+      "type": "object",
+      "description": "LLM and prompt policy for planner/generator.",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": ["strict", "balanced", "exploratory"],
+          "default": "balanced"
+        },
+        "planner": {
+          "type": "object",
+          "properties": {
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+            "top_p": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "max_tokens": { "type": "integer", "minimum": 1000 },
+            "json_mode": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "generator": {
+          "type": "object",
+          "properties": {
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+            "top_p": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+            "max_tokens": { "type": "integer", "minimum": 1000 }
+          },
+          "additionalProperties": false
+        },
+        "selector_policy": {
+          "type": "string",
+          "enum": ["auto", "data-testid", "role-first", "none"],
+          "default": "auto"
+        },
+        "require_plan_case_comments": {
+          "type": "boolean",
+          "default": true
+        },
+        "emit_plan_markdown": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "requirements": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path to requirements.md (optional)."
+        },
+        "planner_mode": {
+          "type": "string",
+          "enum": ["full", "excerpt", "omit"],
+          "default": "excerpt"
+        }
+      }
+    },
+    "openapi": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "operation_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "If empty, full spec is included (subject to char cap)."
+        }
+      }
+    },
+    "env_template": {
+      "type": "string",
+      "description": "Placeholder-only env notes for integration (no secrets)."
+    },
+    "page_snapshot": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "format": { "type": "string", "enum": ["dom", "a11y", "html"] }
+      }
+    },
+    "screens": {
+      "type": "array",
+      "description": "For integration_ui: screen id to operation_ids.",
+      "items": {
+        "type": "object",
+        "required": ["id", "operation_ids"],
+        "properties": {
+          "id": { "type": "string" },
+          "operation_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "related_components": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-relative paths for integration_ui / unit_ui hooks."
+    },
+    "policies": {
+      "type": "object",
+      "required": ["max_prompt_chars"],
+      "properties": {
+        "max_prompt_chars": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1000 }
+        },
+        "forbidden_path_globs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "role"],
+        "properties": {
+          "path": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": ["planner_only", "generator_only", "both"]
+          },
+          "sha256": {
+            "type": "string",
+            "description": "Optional; if set, must match file hash or build fails."
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Higher number = kept earlier in bundle when truncating (5 = highest retention)."
+          },
+          "include_snippets": {
+            "type": "array",
+            "description": "1-based inclusive line ranges; when set, only those slices are included for this file.",
+            "items": {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": { "type": "integer", "minimum": 1 },
+                "end": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "output_policy": {
+      "type": "object",
+      "required": ["primary_test_file"],
+      "properties": {
+        "primary_test_file": {
+          "type": "string",
+          "description": "Repo-relative path where the main generated test should land under generated/."
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
