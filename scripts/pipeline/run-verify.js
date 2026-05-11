@@ -27,6 +27,7 @@ const {
   summarizePlaywrightJsonReport,
   aggregateE2ePipelineRuns,
 } = require('./playwright-report-for-pipeline.js');
+const { sourceUsesForbiddenPlaywrightWaitForTimeout } = require('./sanitize-generated-source.js');
 
 /** Outer Playwright executions per e2e file in pipeline:verify (inner Playwright `--retries=0`). */
 const PIPELINE_E2E_REPEAT_RUNS = Math.max(
@@ -704,6 +705,15 @@ async function main() {
     for (const rule of forbidden) {
       const globs = rule.globs || ['**/*.js'];
       if (!globs.some((g) => simpleGlobMatch(relPosix, g))) continue;
+      if (rule.id === 'no_waitForTimeout') {
+        if (sourceUsesForbiddenPlaywrightWaitForTimeout(content)) {
+          logLines.push(`FAIL ${rule.id} in ${rel}: ${rule.message}`);
+          await fs.writeFile(path.join(runDir, 'verify.log'), logLines.join('\n'), 'utf-8');
+          console.error(`${rule.message} (${rule.id}) in ${rel}`);
+          process.exit(3);
+        }
+        continue;
+      }
       const re = new RegExp(rule.pattern, 'm');
       if (re.test(content)) {
         logLines.push(`FAIL ${rule.id} in ${rel}: ${rule.message}`);

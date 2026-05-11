@@ -21,7 +21,7 @@
     {
       "id": "no_waitForTimeout",
       "pattern": "waitForTimeout\\(",
-      "message": "Avoid page.waitForTimeout / waitForTimeout; use locators and assertions",
+      "message": "Avoid page.waitForTimeout / frame.waitForTimeout; use locators and assertions (scanner ignores comments/strings)",
       "globs": ["**/*.spec.js", "**/*.spec.jsx", "**/e2e/**/*.js"]
     },
     {

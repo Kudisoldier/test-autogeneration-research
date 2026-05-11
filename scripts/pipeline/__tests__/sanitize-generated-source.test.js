@@ -1,6 +1,7 @@
 const {
   sanitizeGeneratedTestSource,
   stripPlaywrightWaitForTimeout,
+  sourceUsesForbiddenPlaywrightWaitForTimeout,
   normalizeE2ePlaywrightBaseUrl,
   stripLeadingGarbageIdentifierLines,
 } = require('../sanitize-generated-source.js');
@@ -53,6 +54,28 @@ describe('sanitizeGeneratedTestSource', () => {
   it('removes full-line await page.waitForTimeout', () => {
     const src = `  await page.waitForTimeout(300);\nawait expect(x).toBeVisible();\n`;
     expect(stripPlaywrightWaitForTimeout(src).trim()).toBe(`await expect(x).toBeVisible();`);
+  });
+
+  it('removes multiline page.waitForTimeout with nested parens in arg', () => {
+    const src = `await page.waitForTimeout(
+  100 + Math.min(1, 2)
+);
+await expect(x).toBe(1);
+`;
+    const out = stripPlaywrightWaitForTimeout(src).trim();
+    expect(out).toBe(`await expect(x).toBe(1);`);
+  });
+
+  it('sourceUsesForbiddenPlaywrightWaitForTimeout ignores line comments', () => {
+    const src = `// doc: never page.waitForTimeout(500) in prod
+await expect(page).toBeTruthy();
+`;
+    expect(sourceUsesForbiddenPlaywrightWaitForTimeout(src)).toBe(false);
+  });
+
+  it('sourceUsesForbiddenPlaywrightWaitForTimeout detects real calls', () => {
+    expect(sourceUsesForbiddenPlaywrightWaitForTimeout('await page.waitForTimeout(1);')).toBe(true);
+    expect(sourceUsesForbiddenPlaywrightWaitForTimeout('void frame.waitForTimeout(2);')).toBe(true);
   });
 
   it('rewrites localhost:5173 to 127.0.0.1:3000 for e2e output paths only', () => {
