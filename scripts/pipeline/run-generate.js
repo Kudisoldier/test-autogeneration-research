@@ -19,6 +19,7 @@ const {
 } = require('./build-context.js');
 const { resolveGenerationConfig, cliFlagsFromOpts } = require('./config.js');
 const { generateTestWithRetry } = require('../openrouter-client.js');
+const { sanitizeGeneratedTestSource } = require('./sanitize-generated-source.js');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 const PROMPTS_DIR = path.join(__dirname, 'prompts');
@@ -96,6 +97,7 @@ async function main() {
   cleaned = cleaned.replace(/^```(?:javascript|js|ts|tsx|jsx)?\n?/gm, '');
   cleaned = cleaned.replace(/\n?```$/gm, '');
   cleaned = cleaned.trim();
+  cleaned = sanitizeGeneratedTestSource(cleaned);
 
   const relOut = manifest.output_policy.primary_test_file.replace(/\\/g, '/');
   const absOut = path.join(runDir, 'generated', relOut);
