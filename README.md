@@ -23,11 +23,11 @@ App will be available at:
 - `make server` - Start backend only
 - `make client` - Start frontend only
 - `make build` - Build for production
-- `make docker:build` - Build Docker image
-- `make docker:up` - Run app in Docker (`3000`, `3001`)
-- `make docker:down` - Stop Docker services
-- `make docker:test` - Run tests inside Docker
-- `make docker:generate:test` - Generate tests inside Docker
+- `make docker-build` - Build Docker image
+- `make docker-up` - Run app in Docker (`3000`, `3001`)
+- `make docker-down` - Stop Docker services
+- `make docker-test` - Run tests inside Docker
+- `make docker-generate-test` - Generate tests inside Docker
 
 ## CI/CD
 
