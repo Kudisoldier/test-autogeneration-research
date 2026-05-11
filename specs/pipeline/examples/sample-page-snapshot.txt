@@ -1,9 +1,89 @@
-[minimized page snapshot — example]
-main [ref=e1]:
-  heading "Feedback" [level=1]
-  textbox "Name" [ref=e2]
-  textbox "Email" [ref=e3]
-  combobox "Rating" [ref=e4]
-  textbox "Message" [ref=e5]
-  button "Submit" [ref=e6] [cursor=pointer]
-  list "Feedback list" [ref=e7]
+# Minimized accessibility-oriented snapshot — Feedback app (client/src/App.jsx + FeedbackForm + FeedbackList)
+
+This file is the contract for E2E selectors. It mirrors `FeedbackForm.jsx`, `App.jsx`, and `FeedbackList.jsx`.
+Validation copy comes from `client/src/utils/validation.js` (exact strings below).
+
+## Stable `data-testid` hooks (prefer these over guessing text)
+
+- `app`, `app-title`, `app-subtitle`
+- `feedback-form`
+- Field groups: `form-group-name`, `form-group-email`, `form-group-rating`, `form-group-message`
+- Inputs: `input-name`, `input-email`, `select-rating`, `textarea-message`
+- Inline errors (only in DOM when that field has an error): `error-name`, `error-email`, `error-rating`, `error-message` — each is a `role="alert"` span next to the field, **not** inside the input value.
+- Submit: `submit-button` — type submit; when submitting, `disabled` is true and visible text is `Submitting...`; idle visible text is `Submit Feedback` (accessible name follows visible text; no separate aria-label on the button).
+- After API result: `submit-status-success` or `submit-status-error` — `role="alert"` with the status message (success uses `SUCCESS_MESSAGES.FEEDBACK_SUBMITTED` from constants; submit failure uses `ERROR_MESSAGES.SUBMIT_FAILED` or API error text).
+- List: `feedback-list`, `feedback-list-title` (“Recent Feedback”), `feedback-list-loading`, `feedback-items`, `feedback-list-empty`, items `feedback-item-<id>`, etc.
+
+## Exact validation strings (blur or full-form validation)
+
+- name empty: `Name is required`; name short: `Name must be at least 2 characters`
+- email empty: `Email is required`; invalid format: `Please enter a valid email address`
+- rating: `Rating is required` / `Rating must be between 1 and 5`
+- message: `Message is required` / `Message must be at least 10 characters`
+
+---
+
+## View A — initial load (empty form, list loading or loaded)
+
+main [ref=app]:
+  region "Feedback Form" [ref=app-container]:
+    heading "Feedback Form" [level=1]
+    paragraph: "Please share your feedback with us"
+
+    form [ref=feedback-form] [data-testid=feedback-form]:
+      group "Name *":
+        textbox "Name" [ref=input-name] [data-testid=input-name] [aria-required=true] [aria-invalid=false]
+        # error-name span is absent until name invalid
+      group "Email *":
+        textbox "Email" [ref=input-email] [data-testid=input-email] [aria-required=true] [aria-invalid=false]
+        # error-email absent until invalid
+      group "Rating *":
+        combobox "Rating" [ref=select-rating] [data-testid=select-rating] [aria-required=true]
+          option "Select a rating" [selected]
+          options "1 - Poor" … "5 - Excellent"
+        # error-rating absent until invalid
+      group "Message *":
+        textbox "Message" [ref=textarea-message] [data-testid=textarea-message] [aria-required=true] [aria-invalid=false]
+        # error-message absent until invalid
+      # submit-status-* absent until after submit attempt completes
+      button "Submit Feedback" [ref=submit-button] [data-testid=submit-button] [enabled]
+
+    region "Recent Feedback" [ref=feedback-list] [data-testid=feedback-list]:
+      heading "Recent Feedback" [level=2]
+      # When loading: text "Loading..." inside [data-testid=feedback-list-loading]
+      # When empty: [data-testid=feedback-list-empty] text includes "No feedback yet"
+      # When data: [data-testid=feedback-items] contains feedback-item-* cards
+
+---
+
+## View B — email invalid after blur (e.g. user typed "not-an-email" and tabbed away)
+
+(form structure same as View A; deltas:)
+
+      group "Email *":
+        textbox "Email" [data-testid=input-email] [aria-invalid=true] [aria-describedby=error-email]
+        alert "Please enter a valid email address" [ref=error-email] [id=error-email] [data-testid=error-email]
+
+Assertions: use `page.getByTestId('error-email')` or `getByRole('alert', { name: /valid email/i })` — **do not** expect error copy on the textbox node via `toHaveText`.
+
+---
+
+## View C — while `isSubmitting` is true (after valid submit, before response)
+
+      button "Submitting..." [data-testid=submit-button] [disabled]
+
+Use `await expect(page.getByTestId('submit-button')).toBeDisabled()` and `toHaveText(/Submitting/i)` (or role `button` name `/Submitting/`).
+
+---
+
+## View D — submit succeeded
+
+      alert [data-testid=submit-status-success] [role=alert]: includes "Feedback submitted successfully!" (or server message)
+
+      button "Submit Feedback" [enabled]  # form reset after success
+
+---
+
+## View E — submit failed (network/API error path)
+
+      alert [data-testid=submit-status-error] [role=alert]: includes "Failed to submit feedback" or thrown message

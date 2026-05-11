@@ -622,6 +622,15 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
       parts.push(
         'Avoid `page.waitForTimeout` and arbitrary sleeps; use Playwright locators and web-first assertions.'
       );
+      parts.push(
+        'Field errors render in sibling `role="alert"` nodes with `data-testid="error-<field>"` (e.g. `error-email`), not as the input value — assert on those locators, not `toHaveText` on the textbox for validation copy.'
+      );
+      parts.push(
+        'Submit control: `data-testid="submit-button"`; idle text `Submit Feedback`; while submitting, `disabled` and visible text `Submitting...`. Prefer `getByTestId(\'submit-button\')` with `toBeDisabled()` / text assertions.'
+      );
+      parts.push(
+        'Post-submit status: `data-testid="submit-status-success"` or `data-testid="submit-status-error"` with `role="alert"` — use these for success/failure messages.'
+      );
     }
   }
 

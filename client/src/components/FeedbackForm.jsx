@@ -226,7 +226,6 @@ const FeedbackForm = ({ onSuccess }) => {
         className="submit-button"
         disabled={isSubmitting}
         data-testid="submit-button"
-        aria-label="Submit feedback"
       >
         {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
       </button>

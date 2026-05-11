@@ -30,7 +30,18 @@
   "files": [
     {
       "path": "client/src/components/FeedbackForm.jsx",
-      "role": "planner_only"
+      "role": "both",
+      "priority": 5
+    },
+    {
+      "path": "client/src/utils/validation.js",
+      "role": "both",
+      "priority": 4
+    },
+    {
+      "path": "client/src/App.jsx",
+      "role": "both",
+      "priority": 3
     }
   ],
   "output_policy": {
