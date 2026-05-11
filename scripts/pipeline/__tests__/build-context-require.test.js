@@ -55,4 +55,12 @@ describe('fixEsmSpecifierDepthForNestedTests', () => {
     expect(out).toContain('jest.mock("../../utils/api"');
     expect(out).not.toContain("jest.mock('../utils/validation'");
   });
+
+  it('fixes ../utils when utils modules are not listed in manifest.files', () => {
+    const src = `jest.mock('../utils/api', () => ({}));\nimport { submitFeedback } from '../utils/api';\n`;
+    const out = fixEsmSpecifierDepthForNestedTests(src, testRel, []);
+    expect(out).toContain("jest.mock('../../utils/api'");
+    expect(out).toContain("from '../../utils/api'");
+    expect(out).not.toContain("from '../utils/api'");
+  });
 });

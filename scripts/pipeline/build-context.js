@@ -237,6 +237,33 @@ function isSafeSpecifierForQuotedReplace(wrong) {
 }
 
 /**
+ * Manifest `files` often lists only the component under test, not `client/src/utils/*.js`.
+ * Models still copy `../utils/...` from the SUT; tests in `.../__tests__/` need `../../utils/...`.
+ * Only touches client paths under `__tests__/` (repo layout: `src/utils` sibling of `src/components`).
+ *
+ * @param {string} source
+ * @param {string} testFileRepoRel
+ * @returns {string}
+ */
+function fixClientUndershootUtilsPaths(source, testFileRepoRel) {
+  const t = String(testFileRepoRel || '').replace(/\\/g, '/');
+  if (!t.startsWith('client/') || !t.includes('/__tests__/')) return source;
+  let s = source;
+  const pairs = [
+    ["'../utils/", "'../../utils/"],
+    ['"../utils/', '"../../utils/'],
+    ["from '../utils/", "from '../../utils/"],
+    ['from "../utils/', 'from "../../utils/'],
+    ["import('../utils/", "import('../../utils/"],
+    ['import("../utils/', 'import("../../utils/'],
+    ["require('../utils/", "require('../../utils/"],
+    ['require("../utils/', 'require("../../utils/'],
+  ];
+  for (const [a, b] of pairs) s = s.split(a).join(b);
+  return s;
+}
+
+/**
  * When tests live under `.../__tests__/`, models often copy `jest.mock('../utils/...')` from the
  * component next door; from `__tests__/` that resolves one directory short. Rewrite quoted
  * specifiers to paths relative to the actual test file.
@@ -265,6 +292,7 @@ function fixEsmSpecifierDepthForNestedTests(source, testFileRepoRel, manifestFil
     s = s.split(`'${wrong}'`).join(`'${correct}'`);
     s = s.split(`"${wrong}"`).join(`"${correct}"`);
   }
+  s = fixClientUndershootUtilsPaths(s, testFileRepoRel);
   return s;
 }
 
@@ -710,6 +738,7 @@ module.exports = {
   esmRelativeImportFromTestToModule,
   sutDirectoryIfTestInTests,
   wrongFlatImportsFromSutDir,
+  fixClientUndershootUtilsPaths,
   fixEsmSpecifierDepthForNestedTests,
   buildContextBundle,
   buildGeneratorUserPrompt,
