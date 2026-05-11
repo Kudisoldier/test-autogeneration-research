@@ -108,7 +108,9 @@ jobs:
             md += "|---|---:|\n";
             md += `| Flaky files | ${summary.flakyFiles || 0} |\n`;
             md += `| Flaky failures | ${summary.flakyFailures || 0} |\n`;
-            md += `| Flaky test rate | ${((summary.flakyTestRate || 0) * 100).toFixed(1)}% |\n`;
+            md += `| Flaky test rate | ${Number(summary.flakyTestRate || 0).toFixed(1)}% |\n`;
+            md += `| Repeat runs per file (max) | ${summary.repeatRuns != null ? summary.repeatRuns : "n/a"} |\n`;
+            md += `| Flaky multi-run evaluation | ${summary.flakyMultiRunEvaluation ? "yes" : "no"} |\n`;
             md += `| Avg TTG (s) | ${(summary.ttgSecondsAvg || 0).toFixed(3)} |\n\n`;
 
             const byTypeCoverage = report.byTypeCoverage || {};

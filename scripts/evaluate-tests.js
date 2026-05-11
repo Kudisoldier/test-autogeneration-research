@@ -2033,9 +2033,37 @@ async function evaluateAllTests(outputDir = 'research-output') {
 }
 
 /**
+ * When every detail row sets `totalRunCount` (pipeline uses 1; `evaluateTestFile` uses FLAKY_RUNS),
+ * report `repeatRuns` as the max across files. If any row omits it (legacy), keep default FLAKY_RUNS.
+ */
+function inferRepeatRunsFromDetailResults(results) {
+  if (!Array.isArray(results) || results.length === 0) return FLAKY_RUNS;
+  const counts = [];
+  for (const r of results) {
+    const c = r && r.totalRunCount;
+    if (typeof c !== 'number' || !Number.isFinite(c) || c < 1) return FLAKY_RUNS;
+    counts.push(c);
+  }
+  return Math.max(1, ...counts);
+}
+
+/** True when results came from multi-run flaky sampling (each file run more than once). */
+function inferFlakyMultiRunEvaluation(results) {
+  if (!Array.isArray(results) || results.length === 0) return false;
+  for (const r of results) {
+    const c = r && r.totalRunCount;
+    if (typeof c !== 'number' || !Number.isFinite(c) || c < 1) return false;
+  }
+  return Math.max(...results.map((r) => r.totalRunCount)) > 1;
+}
+
+/**
  * Generate evaluation report
  */
 function generateReport(results) {
+  const repeatRunsInferred = inferRepeatRunsFromDetailResults(results);
+  const flakyMultiRunEvaluation = inferFlakyMultiRunEvaluation(results);
+
   const totalFileRuns = results.reduce((sum, r) => sum + (r.totalRunCount || FLAKY_RUNS || 1), 0);
   // Calculate total test runs: sum of testCount from all runs of all tests
   const totalTestRuns = results.reduce((sum, r) => {
@@ -2064,7 +2092,8 @@ function generateReport(results) {
       totalRuns: totalFileRuns,
       totalTestRuns,
       flakyTestRate: totalTestRuns > 0 ? (flakyFailures / totalTestRuns) * 100 : 0, // FTR: flaky failures / total test runs
-      repeatRuns: FLAKY_RUNS,
+      repeatRuns: repeatRunsInferred,
+      flakyMultiRunEvaluation,
       totalTests: results.reduce((sum, r) => sum + r.testCount, 0),
       totalPassed: results.reduce((sum, r) => sum + r.passCount, 0),
       totalFailed: results.reduce((sum, r) => sum + r.failCount, 0),
@@ -2281,6 +2310,12 @@ function printReport(report) {
   console.log(`  Passed: ${report.summary.totalPassed}`);
   console.log(`  Failed: ${report.summary.totalFailed}`);
   console.log(`  Success rate: ${report.summary.totalTests > 0 ? ((report.summary.totalPassed / report.summary.totalTests) * 100).toFixed(1) : 0}%`);
+  if (report.summary.repeatRuns != null) {
+    console.log(`  Repeat runs per file (max): ${report.summary.repeatRuns}`);
+  }
+  if (report.summary.flakyMultiRunEvaluation != null) {
+    console.log(`  Flaky multi-run evaluation: ${report.summary.flakyMultiRunEvaluation ? 'yes' : 'no'}`);
+  }
 
   console.log('\nBY MODEL:');
   Object.entries(report.byModel).forEach(([model, stats]) => {
@@ -2349,4 +2384,12 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-module.exports = { evaluateAllTests, generateReport, evaluateTestFile, evaluateTestFileOnce };
+module.exports = {
+  evaluateAllTests,
+  generateReport,
+  evaluateTestFile,
+  evaluateTestFileOnce,
+  FLAKY_RUNS,
+  inferRepeatRunsFromDetailResults,
+  inferFlakyMultiRunEvaluation,
+};
