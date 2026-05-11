@@ -57,4 +57,23 @@ describe('generateReport repeatRuns / flaky metrics', () => {
     expect(inferFlakyMultiRunEvaluation([detailRow({ totalRunCount: 3 })])).toBe(true);
     expect(inferFlakyMultiRunEvaluation([detailRow({ totalRunCount: 1 })])).toBe(false);
   });
+
+  it('computes non-zero flakyTestRate when flakyFailureCount > 0 and totalRunCount > 1', () => {
+    const report = generateReport([
+      detailRow({
+        totalRunCount: 3,
+        flaky: true,
+        flakyFailureCount: 2,
+        testCount: 5,
+        passCount: 4,
+        failCount: 1,
+        passes: false,
+      }),
+    ]);
+    expect(report.summary.repeatRuns).toBe(3);
+    expect(report.summary.flakyMultiRunEvaluation).toBe(true);
+    expect(report.summary.flakyFailures).toBe(2);
+    expect(report.summary.totalTestRuns).toBe(15);
+    expect(report.summary.flakyTestRate).toBeCloseTo((2 / 15) * 100, 5);
+  });
 });

@@ -2,7 +2,9 @@
 /**
  * Stage 3: verify — node --check + forbidden patterns + plan-case coverage on files under <run-dir>/generated
  * Optional --run-tests stages generated files into repo-relative paths, runs Jest (unit/integration)
- * or Playwright (e2e) with machine-readable output, then writes `<run-dir>/evaluation-report.json`
+ * or Playwright (e2e) with machine-readable output. E2e runs the spec **N times** (default **3**;
+ * `PIPELINE_E2E_REPEAT_RUNS` or `FLAKY_RUNS` / `EVALUATION_FLAKY_RUNS`) with Playwright `--retries=0`,
+ * then aggregates flaky metrics like `evaluate-tests.js`. Writes `<run-dir>/evaluation-report.json`
  * (model / TTG from `generate.meta.json` + `plan.meta.json`, type bucket from `context_manifest.json`
  * `test_level`). Assertion failures are recorded in the report and do not fail verify; only staging /
  * I/O errors exit 3.
@@ -21,7 +23,17 @@ const { execSync } = require('child_process');
 const { program } = require('commander');
 const { generateReport } = require('../evaluate-tests.js');
 const { collectCoverageFromForJest } = require('./jest-collect-coverage-from.js');
-const { summarizePlaywrightJsonReport } = require('./playwright-report-for-pipeline.js');
+const {
+  summarizePlaywrightJsonReport,
+  aggregateE2ePipelineRuns,
+} = require('./playwright-report-for-pipeline.js');
+
+/** Outer Playwright executions per e2e file in pipeline:verify (inner Playwright `--retries=0`). */
+const PIPELINE_E2E_REPEAT_RUNS = Math.max(
+  1,
+  parseInt(process.env.PIPELINE_E2E_REPEAT_RUNS || process.env.FLAKY_RUNS || process.env.EVALUATION_FLAKY_RUNS || '3', 10) ||
+    3
+);
 
 const RULES_PATH = path.join(__dirname, 'verify-rules.json');
 const PLAN_CASE_RE = /\/\/\s*plan-case:\s*([a-zA-Z0-9_-]+)/g;
@@ -392,12 +404,8 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
 
 const PIPELINE_PLAYWRIGHT_TIMEOUT_MS = 300000;
 
-/**
- * Run one Playwright spec from repo root; JSON on stdout. Uses Chromium only for CI/pipeline speed.
- * Return shape matches `runJestOnStagedFile` (coverage fields null for e2e).
- */
-function runPlaywrightOnStagedFile(relPosix, logLines) {
-  const empty = {
+function emptyPlaywrightSummary() {
+  return {
     runs: false,
     passes: false,
     testCount: 0,
@@ -411,15 +419,22 @@ function runPlaywrightOnStagedFile(relPosix, logLines) {
     assertionResults: [],
     output: '',
     errorOutput: '',
+    flaky: false,
+    flakyFailureCount: 0,
+    totalRunCount: 1,
+    errors: [],
   };
+}
 
-  if (!/^tests\/e2e\//.test(relPosix) || !/\.(spec|test)\.[cm]?[jt]sx?$/i.test(relPosix)) {
-    logLines.push(`SKIP playwright (not an e2e spec path) ${relPosix}`);
-    return { ...empty, errorOutput: 'Path is not a Playwright spec under tests/e2e/' };
-  }
+/**
+ * Single Playwright invocation (JSON on stdout). Chromium only; `--retries=0` so flakiness is attributed to outer repeats.
+ * Return shape matches `runJestOnStagedFile` (coverage fields null for e2e).
+ */
+function runPlaywrightOnceOnStagedFile(relPosix, logLines) {
+  const empty = emptyPlaywrightSummary();
 
   const relEsc = relPosix.replace(/"/g, '\\"');
-  const cmd = `npx playwright test "${relEsc}" --reporter=json --project=chromium`;
+  const cmd = `npx playwright test "${relEsc}" --reporter=json --project=chromium --retries=0`;
 
   let stdout = '';
   let stderr = '';
@@ -460,6 +475,10 @@ function runPlaywrightOnStagedFile(relPosix, logLines) {
       assertionResults: s.assertionResults,
       output: tail(stdout, 4000),
       errorOutput: tail(stderr, 4000),
+      flaky: false,
+      flakyFailureCount: 0,
+      totalRunCount: 1,
+      errors: [],
     };
   } catch (e) {
     logLines.push(`FAIL parse playwright json: ${e.message}`);
@@ -469,6 +488,28 @@ function runPlaywrightOnStagedFile(relPosix, logLines) {
       errorOutput: tail(stderr || `playwright exit ${exitCode}, stdout was not valid JSON`, 4000),
     };
   }
+}
+
+/**
+ * Run the same e2e spec `PIPELINE_E2E_REPEAT_RUNS` times (default 3, env: PIPELINE_E2E_REPEAT_RUNS / FLAKY_RUNS / EVALUATION_FLAKY_RUNS).
+ * Aggregates flaky metrics like `evaluateTestFile` in evaluate-tests.js.
+ */
+function runPlaywrightOnStagedFile(relPosix, logLines) {
+  const empty = emptyPlaywrightSummary();
+
+  if (!/^tests\/e2e\//.test(relPosix) || !/\.(spec|test)\.[cm]?[jt]sx?$/i.test(relPosix)) {
+    logLines.push(`SKIP playwright (not an e2e spec path) ${relPosix}`);
+    return { ...empty, errorOutput: 'Path is not a Playwright spec under tests/e2e/' };
+  }
+
+  const repeatRuns = PIPELINE_E2E_REPEAT_RUNS;
+  const runResults = [];
+  for (let i = 0; i < repeatRuns; i++) {
+    logLines.push(`playwright e2e run ${i + 1}/${repeatRuns} ${relPosix}`);
+    runResults.push(runPlaywrightOnceOnStagedFile(relPosix, logLines));
+  }
+
+  return aggregateE2ePipelineRuns(runResults, repeatRuns);
 }
 
 /**
@@ -485,9 +526,14 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
     if (evalType === 'e2e') {
       const pw = runPlaywrightOnStagedFile(rel, logLines);
       rows.push({ abs: f.abs, jest: pw, rel });
-      if (pw.runs && pw.passes) logLines.push(`OK playwright ${rel}`);
-      else if (pw.runs) logLines.push(`WARN playwright failures ${rel}`);
-      else logLines.push(`FAIL playwright did not run or stdout was not valid JSON ${rel}`);
+      if (pw.runs && pw.passes) logLines.push(`OK playwright ${rel} (${PIPELINE_E2E_REPEAT_RUNS} runs)`);
+      else if (pw.runs) {
+        logLines.push(
+          pw.flaky
+            ? `WARN playwright flaky (${PIPELINE_E2E_REPEAT_RUNS} runs) ${rel}`
+            : `WARN playwright failures ${rel}`
+        );
+      } else logLines.push(`FAIL playwright did not run or stdout was not valid JSON ${rel}`);
       continue;
     }
 
@@ -537,6 +583,14 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
 
 function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) {
   const j = jestSummary;
+  const totalRunCount =
+    typeof j.totalRunCount === 'number' && Number.isFinite(j.totalRunCount) && j.totalRunCount >= 1
+      ? j.totalRunCount
+      : 1;
+  const flaky = j.flaky === true;
+  const flakyFailureCount =
+    typeof j.flakyFailureCount === 'number' && Number.isFinite(j.flakyFailureCount) ? j.flakyFailureCount : 0;
+  const errors = Array.isArray(j.errors) ? [...j.errors] : [];
   return {
     file: abs,
     model,
@@ -546,7 +600,7 @@ function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) 
     syntaxValid: true,
     runs: j.runs,
     passes: j.passes,
-    errors: [],
+    errors,
     testCount: j.testCount,
     passCount: j.passCount,
     failCount: j.failCount,
@@ -559,9 +613,9 @@ function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) 
     logPath: null,
     rootCause: null,
     ttgSeconds,
-    flaky: false,
-    flakyFailureCount: 0,
-    totalRunCount: 1,
+    flaky,
+    flakyFailureCount,
+    totalRunCount,
     output: j.output,
     errorOutput: j.errorOutput,
   };
@@ -733,6 +787,13 @@ async function main() {
         passCount: typeof r.jest.passCount === 'number' ? r.jest.passCount : 0,
         failCount: typeof r.jest.failCount === 'number' ? r.jest.failCount : 0,
         assertionResults: Array.isArray(r.jest.assertionResults) ? r.jest.assertionResults : [],
+        flaky: r.jest.flaky === true,
+        flakyFailureCount:
+          typeof r.jest.flakyFailureCount === 'number' && Number.isFinite(r.jest.flakyFailureCount)
+            ? r.jest.flakyFailureCount
+            : 0,
+        totalRunCount:
+          typeof r.jest.totalRunCount === 'number' && r.jest.totalRunCount >= 1 ? r.jest.totalRunCount : 1,
       }));
       await fs.writeFile(
         path.join(runDir, 'jest-results.json'),
