@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Stage 3: verify — node --check + forbidden patterns + plan-case coverage on files under <run-dir>/generated
- * Optional --run-tests stages generated files into repo-relative paths, runs Jest with --json,
- * and writes `<run-dir>/evaluation-report.json` (model / TTG from `generate.meta.json` + `plan.meta.json`,
- * type bucket from `context_manifest.json` `test_level`). Jest assertion failures are recorded in the
- * report and do not fail verify; only staging / I/O errors exit 3.
+ * Optional --run-tests stages generated files into repo-relative paths, runs Jest (unit/integration)
+ * or Playwright (e2e) with machine-readable output, then writes `<run-dir>/evaluation-report.json`
+ * (model / TTG from `generate.meta.json` + `plan.meta.json`, type bucket from `context_manifest.json`
+ * `test_level`). Assertion failures are recorded in the report and do not fail verify; only staging /
+ * I/O errors exit 3.
  *
  * Usage:
  *   node scripts/pipeline/run-verify.js --run-dir research-output/runs/run-123
@@ -20,6 +21,7 @@ const { execSync } = require('child_process');
 const { program } = require('commander');
 const { generateReport } = require('../evaluate-tests.js');
 const { collectCoverageFromForJest } = require('./jest-collect-coverage-from.js');
+const { summarizePlaywrightJsonReport } = require('./playwright-report-for-pipeline.js');
 
 const RULES_PATH = path.join(__dirname, 'verify-rules.json');
 const PLAN_CASE_RE = /\/\/\s*plan-case:\s*([a-zA-Z0-9_-]+)/g;
@@ -388,8 +390,89 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
   };
 }
 
+const PIPELINE_PLAYWRIGHT_TIMEOUT_MS = 300000;
+
 /**
- * Build per-file evaluation rows + run Jest (except e2e manifest: not executed here).
+ * Run one Playwright spec from repo root; JSON on stdout. Uses Chromium only for CI/pipeline speed.
+ * Return shape matches `runJestOnStagedFile` (coverage fields null for e2e).
+ */
+function runPlaywrightOnStagedFile(relPosix, logLines) {
+  const empty = {
+    runs: false,
+    passes: false,
+    testCount: 0,
+    passCount: 0,
+    failCount: 0,
+    coverageGenerated: null,
+    coverageWithTest: null,
+    coverageBaseline: null,
+    coverageDelta: null,
+    coverageSourceFile: null,
+    assertionResults: [],
+    output: '',
+    errorOutput: '',
+  };
+
+  if (!/^tests\/e2e\//.test(relPosix) || !/\.(spec|test)\.[cm]?[jt]sx?$/i.test(relPosix)) {
+    logLines.push(`SKIP playwright (not an e2e spec path) ${relPosix}`);
+    return { ...empty, errorOutput: 'Path is not a Playwright spec under tests/e2e/' };
+  }
+
+  const relEsc = relPosix.replace(/"/g, '\\"');
+  const cmd = `npx playwright test "${relEsc}" --reporter=json --project=chromium`;
+
+  let stdout = '';
+  let stderr = '';
+  let exitCode = 0;
+  try {
+    stdout = execSync(cmd, {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: PIPELINE_PLAYWRIGHT_TIMEOUT_MS,
+    });
+  } catch (e) {
+    stdout = (e.stdout && e.stdout.toString()) || '';
+    stderr = (e.stderr && e.stderr.toString()) || '';
+    if (!stderr && e.message) stderr = e.message;
+    exitCode = typeof e.status === 'number' ? e.status : 1;
+  }
+
+  logLines.push(`[playwright exit=${exitCode}] ${relPosix}`);
+  logLines.push(tail(stdout, 4000));
+  if (stderr) logLines.push(`stderr: ${tail(stderr, 2000)}`);
+
+  try {
+    const data = JSON.parse(stdout);
+    const s = summarizePlaywrightJsonReport(data);
+    return {
+      runs: s.runs,
+      passes: s.passes,
+      testCount: s.testCount,
+      passCount: s.passCount,
+      failCount: s.failCount,
+      coverageGenerated: null,
+      coverageWithTest: null,
+      coverageBaseline: null,
+      coverageDelta: null,
+      coverageSourceFile: null,
+      assertionResults: s.assertionResults,
+      output: tail(stdout, 4000),
+      errorOutput: tail(stderr, 4000),
+    };
+  } catch (e) {
+    logLines.push(`FAIL parse playwright json: ${e.message}`);
+    return {
+      ...empty,
+      output: tail(stdout, 4000),
+      errorOutput: tail(stderr || `playwright exit ${exitCode}, stdout was not valid JSON`, 4000),
+    };
+  }
+}
+
+/**
+ * Build per-file evaluation rows: Jest for unit/integration, Playwright JSON for e2e.
  */
 /**
  * @param {Array<{abs:string, rel:string, dest:string}>} stagedFiles
@@ -400,26 +483,11 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
     const rel = f.rel.replace(/\\/g, '/');
 
     if (evalType === 'e2e') {
-      rows.push({
-        abs: f.abs,
-        jest: {
-          runs: false,
-          passes: false,
-          testCount: 0,
-          passCount: 0,
-          failCount: 0,
-          coverageGenerated: null,
-          coverageWithTest: null,
-          coverageBaseline: null,
-          coverageDelta: null,
-          coverageSourceFile: coverageSourceRel,
-          assertionResults: [],
-          output: '',
-          errorOutput: 'e2e execution not supported in pipeline:verify yet',
-        },
-        rel,
-      });
-      logLines.push(`SKIP jest (e2e) ${rel}`);
+      const pw = runPlaywrightOnStagedFile(rel, logLines);
+      rows.push({ abs: f.abs, jest: pw, rel });
+      if (pw.runs && pw.passes) logLines.push(`OK playwright ${rel}`);
+      else if (pw.runs) logLines.push(`WARN playwright failures ${rel}`);
+      else logLines.push(`FAIL playwright did not run or stdout was not valid JSON ${rel}`);
       continue;
     }
 
@@ -538,7 +606,7 @@ async function main() {
     .requiredOption('--run-dir <path>', 'Run directory containing generated/')
     .option(
       '--run-tests',
-      'Stage generated tests, run Jest (JSON), write evaluation-report.json (assertion failures do not fail verify)'
+      'Stage generated tests, run Jest or Playwright (e2e), write evaluation-report.json (assertion failures do not fail verify)'
     )
     .parse();
 
@@ -678,7 +746,7 @@ async function main() {
         }s`
       );
       logLines.push(
-        'OK generated test execution (evaluation-report.json; jest assertion failures do not fail verify)'
+        'OK generated test execution (evaluation-report.json; test assertion failures do not fail verify)'
       );
     } catch (e) {
       logLines.push(`FAIL staging or evaluation-report: ${e.message}`);

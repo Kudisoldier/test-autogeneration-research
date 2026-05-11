@@ -164,6 +164,42 @@ describe('buildCoverageMatrix', () => {
     expect(totals.notRun).toBe(1);
   });
 
+  it('marks a case passed when e2e runner produced matching assertion results', () => {
+    const parsed = {
+      tests: [
+        {
+          fullName: 'Outer describe inner test',
+          title: 'inner test',
+          ancestorTitles: ['Outer describe'],
+          planCaseIds: ['pass-case'],
+        },
+      ],
+      caseToTests: { 'pass-case': ['Outer describe inner test'] },
+      knownCaseIds: ['pass-case'],
+    };
+    const jestRows = makeJest([
+      {
+        rel: 'tests/e2e/foo.spec.js',
+        runs: true,
+        passes: true,
+        assertionResults: [
+          {
+            fullName: 'Outer describe inner test',
+            title: 'inner test',
+            ancestorTitles: ['Outer describe'],
+            status: 'passed',
+            failureMessages: [],
+          },
+        ],
+      },
+    ]);
+    const { coverageMatrix, totals } = buildCoverageMatrix(plan, jestRows, parsed);
+    const row = coverageMatrix.find((c) => c.id === 'pass-case');
+    expect(row.status).toBe('passed');
+    expect(totals.passed).toBe(1);
+    expect(totals.notRun).toBe(0);
+  });
+
   it('preserves linked requirement_ids and flakiness_risks on the matrix row', () => {
     const parsed = { tests: [], caseToTests: {}, knownCaseIds: [] };
     const { coverageMatrix } = buildCoverageMatrix(plan, [], parsed);
