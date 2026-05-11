@@ -16,6 +16,7 @@ const {
   validateManifest,
   validatePlan,
   buildDynamicPromptTail,
+  fixEsmSpecifierDepthForNestedTests,
 } = require('./build-context.js');
 const { resolveGenerationConfig, cliFlagsFromOpts } = require('./config.js');
 const { generateTestWithRetry } = require('../openrouter-client.js');
@@ -100,6 +101,8 @@ async function main() {
   cleaned = sanitizeGeneratedTestSource(cleaned);
 
   const relOut = manifest.output_policy.primary_test_file.replace(/\\/g, '/');
+  cleaned = fixEsmSpecifierDepthForNestedTests(cleaned, relOut, manifest.files || []);
+
   const absOut = path.join(runDir, 'generated', relOut);
   await fs.mkdir(path.dirname(absOut), { recursive: true });
   await fs.writeFile(absOut, cleaned, 'utf-8');

@@ -189,6 +189,85 @@ function commonJsRequireFromTestToModule(primaryTestFileRepoRel, targetModuleRep
   return rel;
 }
 
+/**
+ * ESM import / jest.mock specifier from the test file to a module (no extension).
+ * @param {string} primaryTestFileRepoRel
+ * @param {string} moduleRepoRel
+ * @returns {string|null}
+ */
+function esmRelativeImportFromTestToModule(primaryTestFileRepoRel, moduleRepoRel) {
+  const test = primaryTestFileRepoRel.replace(/\\/g, '/');
+  const mod = moduleRepoRel.replace(/\\/g, '/');
+  if (!test || !mod || !/\.(jsx?|tsx?)$/i.test(mod)) return null;
+  const fromDir = path.posix.dirname(test);
+  let rel = path.posix.relative(fromDir, mod);
+  if (!rel) return null;
+  rel = rel.replace(/\.(jsx?|tsx?)$/i, '');
+  if (!rel.startsWith('.')) rel = `./${rel}`;
+  return rel;
+}
+
+/** Parent directory of `.../__tests__/...` (e.g. `client/src/components`), or null. */
+function sutDirectoryIfTestInTests(testFileRepoRel) {
+  const t = testFileRepoRel.replace(/\\/g, '/');
+  const idx = t.indexOf('/__tests__/');
+  if (idx < 0) return null;
+  return t.slice(0, idx);
+}
+
+/**
+ * Import path from the SUT directory (e.g. `components/`) — same string the component file uses
+ * for cross-folder imports. Wrong inside `components/__tests__/` mocks.
+ */
+function wrongFlatImportsFromSutDir(sutDir, moduleRepoRel) {
+  const mod = moduleRepoRel.replace(/\\/g, '/');
+  if (!sutDir || !mod) return null;
+  let rel = path.posix.relative(sutDir, mod);
+  rel = rel.replace(/\.(jsx?|tsx?)$/i, '');
+  if (!rel.startsWith('.')) rel = `./${rel}`;
+  return rel;
+}
+
+function isSafeSpecifierForQuotedReplace(wrong) {
+  return (
+    wrong.startsWith('../') ||
+    wrong.startsWith('./') ||
+    (typeof wrong === 'string' && wrong.includes('/'))
+  );
+}
+
+/**
+ * When tests live under `.../__tests__/`, models often copy `jest.mock('../utils/...')` from the
+ * component next door; from `__tests__/` that resolves one directory short. Rewrite quoted
+ * specifiers to paths relative to the actual test file.
+ *
+ * @param {string} source
+ * @param {string} testFileRepoRel
+ * @param {Array<{path?: string}>} manifestFiles
+ * @returns {string}
+ */
+function fixEsmSpecifierDepthForNestedTests(source, testFileRepoRel, manifestFiles) {
+  const sutDir = sutDirectoryIfTestInTests(testFileRepoRel);
+  if (!sutDir || !source) return source;
+  const rows = [];
+  for (const f of manifestFiles || []) {
+    const mod = (f && f.path && String(f.path).replace(/\\/g, '/')) || '';
+    if (!/\.(jsx?|tsx?)$/i.test(mod)) continue;
+    const correct = esmRelativeImportFromTestToModule(testFileRepoRel, mod);
+    const wrong = wrongFlatImportsFromSutDir(sutDir, mod);
+    if (!correct || !wrong || correct === wrong) continue;
+    if (!isSafeSpecifierForQuotedReplace(wrong)) continue;
+    rows.push({ wrong, correct });
+  }
+  rows.sort((a, b) => b.wrong.length - a.wrong.length);
+  let s = source;
+  for (const { wrong, correct } of rows) {
+    s = s.split(`'${wrong}'`).join(`'${correct}'`);
+    s = s.split(`"${wrong}"`).join(`"${correct}"`);
+  }
+  return s;
+}
+
 function fileRolesForStage(stage) {
   if (stage === 'planner') return new Set(['planner_only', 'both']);
   return new Set(['generator_only', 'both']);
@@ -598,7 +677,27 @@ async function buildGeneratorUserPrompt(projectRoot, manifest, plan, resolvedCon
     }
   }
 
-  return `You must implement the tests as a SINGLE complete test file that will be written to (repo-relative):\n${outFile}${planCaseLine}${importHint}\n\n## APPROVED_TEST_PLAN (JSON)\n\n\`\`\`json\n${planJson}\n\`\`\`\n\n## CODE_AND_CONTRACT_CONTEXT\n\n${bundle}\n`;
+  let esmSpecifierHint = '';
+  if (manifest.test_level === 'unit_ui' || manifest.test_level === 'integration_ui') {
+    const files = Array.isArray(manifest.files) ? manifest.files : [];
+    const rows = [];
+    for (const f of files) {
+      const p = f && f.path && String(f.path).replace(/\\/g, '/');
+      if (!p || !/\.(jsx?|tsx?)$/i.test(p)) continue;
+      const spec = esmRelativeImportFromTestToModule(outFile, p);
+      if (spec) rows.push(`- \`${p}\` → use exactly \`'${spec}'\` in \`import\` / \`jest.mock\` / dynamic \`import()\``);
+    }
+    if (rows.length) {
+      esmSpecifierHint =
+        `\n\n## REQUIRED_ESM_RELATIVE_SPECIFIERS (${manifest.test_level})\n\n` +
+        `The test file will be written to \`${outFile}\`. ` +
+        `Paths are relative to that file. **Do not** copy \`import … from '…'\` strings from a component in a sibling folder ` +
+        `(\`components/Foo.jsx\` often uses \`'../utils/…'\`; a test in \`components/__tests__/Foo.test.jsx\` must use \`'../../utils/…'\`).\n\n` +
+        `${rows.join('\n')}\n`;
+    }
+  }
+
+  return `You must implement the tests as a SINGLE complete test file that will be written to (repo-relative):\n${outFile}${planCaseLine}${importHint}${esmSpecifierHint}\n\n## APPROVED_TEST_PLAN (JSON)\n\n\`\`\`json\n${planJson}\n\`\`\`\n\n## CODE_AND_CONTRACT_CONTEXT\n\n${bundle}\n`;
 }
 
 module.exports = {
@@ -608,6 +707,10 @@ module.exports = {
   validatePlan,
   truncateText,
   commonJsRequireFromTestToModule,
+  esmRelativeImportFromTestToModule,
+  sutDirectoryIfTestInTests,
+  wrongFlatImportsFromSutDir,
+  fixEsmSpecifierDepthForNestedTests,
   buildContextBundle,
   buildGeneratorUserPrompt,
   buildDynamicPromptTail,
