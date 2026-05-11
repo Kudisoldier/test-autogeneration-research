@@ -6,7 +6,6 @@
  *   node scripts/pipeline/run-all.js --manifest specs/pipeline/examples/unit_ui.manifest.json --model qwen/qwen-2.5-7b-instruct:free
  */
 
-const fs = require('fs');
 const { execSync } = require('child_process');
 const path = require('path');
 const { program } = require('commander');
@@ -23,7 +22,7 @@ function escapeArg(s) {
   return JSON.stringify(s);
 }
 
-/** Research / stress mode: skip verify+report; generator sees PIPELINE_E2E_FLAKY_RESEARCH for flaky-biased e2e. */
+/** Research mode: bias e2e generator (PIPELINE_E2E_FLAKY_RESEARCH); verify still runs with --run-tests for flaky metrics; LLM report skipped. */
 function e2eFlakyResearchEnabled(opts) {
   if (opts.e2eFlakyResearch) return true;
   const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
@@ -56,7 +55,7 @@ async function main() {
     .option('--no-report', 'Skip the reporter stage even when --run-tests is set')
     .option(
       '--e2e-flaky-research',
-      'Skip verify and report; set PIPELINE_E2E_FLAKY_RESEARCH=1 for generate (e2e flaky-timing research only; not merge gates)'
+      'Set PIPELINE_E2E_FLAKY_RESEARCH=1 for generate (timing-unstable e2e); still run verify when --run-tests (flaky %); skip LLM report (research only; not merge gates)'
     )
     .parse();
 
@@ -91,22 +90,16 @@ async function main() {
   execSync(genCmd, { cwd: repoRoot, stdio: 'inherit', env: genEnv });
 
   if (flakyResearch) {
-    const verifyLogPath = path.join(repoRoot, runDir, 'verify.log');
-    fs.mkdirSync(path.dirname(verifyLogPath), { recursive: true });
-    fs.writeFileSync(
-      verifyLogPath,
-      'SKIP verify (--e2e-flaky-research / PIPELINE_E2E_FLAKY_RESEARCH)\n',
-      'utf-8'
+    console.log(
+      '\n[pipeline] e2e flaky research: generator had PIPELINE_E2E_FLAKY_RESEARCH; verify runs for flaky metrics; LLM report skipped.\n'
     );
-    console.log('\n[pipeline] SKIP verify + report (e2e flaky research mode)\n');
-  } else {
-    const verifyArgs = o.runTests ? ' --run-tests' : '';
-    execSync(`node scripts/pipeline/run-verify.js --run-dir ${escapeArg(runDir)}${verifyArgs}`, {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      env: process.env,
-    });
   }
+  const verifyArgs = o.runTests ? ' --run-tests' : '';
+  execSync(`node scripts/pipeline/run-verify.js --run-dir ${escapeArg(runDir)}${verifyArgs}`, {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    env: process.env,
+  });
 
   const shouldReport = o.runTests && o.report !== false && !flakyResearch;
   if (shouldReport) {

@@ -553,7 +553,7 @@ function renderTestPlanMarkdown(plan) {
   return lines.join('\n').trim() + '\n';
 }
 
-/** When set, generator adds flaky-timing instructions; `run-all --e2e-flaky-research` skips verify. */
+/** When set, generator adds flaky-timing instructions; verify still runs with --run-tests to measure flaky %. */
 function isPipelineE2eFlakyResearchEnabled() {
   const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
     .toLowerCase()
@@ -650,7 +650,7 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
       );
       if (isPipelineE2eFlakyResearchEnabled()) {
         parts.push(
-          '**FLAKY RESEARCH MODE (`PIPELINE_E2E_FLAKY_RESEARCH`):** pipeline verify is skipped for this run — intentionally write **timing-unstable** tests so multi-run evaluation would disagree. Combine several techniques: (1) insert `await page.waitForTimeout(20 + Math.floor(Math.random() * 200))` before important assertions; (2) use `expect(locator).toBeVisible({ timeout: 30 + Math.floor(Math.random() * 60) })` on elements that normally need longer; (3) sometimes assert success UI **before** `page.waitForResponse` on submit resolves; (4) in a few tests, `if (Math.random() < 0.2) await page.reload()`. Keep imports and selectors valid; goal is **statistical flakiness**, not syntax errors.'
+          '**FLAKY RESEARCH MODE (`PIPELINE_E2E_FLAKY_RESEARCH`):** intentionally write **timing-unstable** tests so pipeline verify’s **multi-run Playwright passes** disagree and **flaky test rate** in `evaluation-report.json` is meaningful. Combine several techniques: (1) insert `await page.waitForTimeout(20 + Math.floor(Math.random() * 200))` before important assertions; (2) use `expect(locator).toBeVisible({ timeout: 30 + Math.floor(Math.random() * 60) })` on elements that normally need longer; (3) sometimes assert success UI **before** `page.waitForResponse` on submit resolves; (4) in a few tests, `if (Math.random() < 0.2) await page.reload()`. Keep imports and selectors valid; goal is **statistical flakiness**, not syntax errors.'
         );
       }
     }
