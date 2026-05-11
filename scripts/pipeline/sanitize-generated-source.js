@@ -46,17 +46,34 @@ function stripLeadingGarbageIdentifierLines(source) {
 }
 
 /**
+ * Remove Playwright `waitForTimeout` / `page.waitForTimeout` (forbidden by pipeline verify).
+ * Handles common single-line forms; multi-line calls are rare for this API.
+ *
+ * @param {string} source
+ * @returns {string}
+ */
+function stripPlaywrightWaitForTimeout(source) {
+  let s = String(source || '');
+  s = s.replace(/\bawait\s+page\.waitForTimeout\s*\([^)]*\)\s*;?/g, '');
+  s = s.replace(/\bpage\.waitForTimeout\s*\([^)]*\)\s*;?/g, '');
+  s = s.replace(/\bawait\s+[^.\n]*\.waitForTimeout\s*\([^)]*\)\s*;?/g, '');
+  return s;
+}
+
+/**
  * @param {string} source raw model output after markdown fence removal
  * @returns {string}
  */
 function sanitizeGeneratedTestSource(source) {
   let s = stripBom(source);
   s = stripLeadingGarbageIdentifierLines(s);
+  s = stripPlaywrightWaitForTimeout(s);
   return s.trim();
 }
 
 module.exports = {
   sanitizeGeneratedTestSource,
+  stripPlaywrightWaitForTimeout,
   stripBom,
   stripLeadingGarbageIdentifierLines,
 };

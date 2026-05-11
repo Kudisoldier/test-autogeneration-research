@@ -102,6 +102,7 @@ async function pathExists(p) {
 function shouldSkipNodeSyntaxCheck(relPosix) {
   if (relPosix.endsWith('.jsx')) return true;
   if (relPosix.startsWith('client/') && relPosix.endsWith('.js')) return true;
+  if (relPosix.startsWith('tests/e2e/') && relPosix.endsWith('.js')) return true;
   return false;
 }
 
