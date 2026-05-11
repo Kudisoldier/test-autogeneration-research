@@ -620,6 +620,9 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
 
     if (tl === 'e2e') {
       parts.push(
+        'App URL: root `playwright.config.js` sets `use.baseURL` to **http://127.0.0.1:3000** and starts **`npm run dev`** (Vite on **port 3000** per `client/vite.config.js`). Use **`await page.goto(\'/\')`** or that origin only. Do **not** assume Vite’s default **5173** or `localhost:5173` unless the manifest explicitly says so.'
+      );
+      parts.push(
         'Avoid `page.waitForTimeout` and arbitrary sleeps; use Playwright locators and web-first assertions.'
       );
       parts.push(

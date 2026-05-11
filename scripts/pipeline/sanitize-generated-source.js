@@ -61,19 +61,49 @@ function stripPlaywrightWaitForTimeout(source) {
 }
 
 /**
+ * LLMs often assume Vite's default port 5173. This repo uses port **3000** for the client
+ * (`client/vite.config.js`) and Playwright `baseURL` **http://127.0.0.1:3000** (root `playwright.config.js`).
+ *
+ * @param {string} source
+ * @param {string} relOut repo-relative output path
+ */
+function normalizeE2ePlaywrightBaseUrl(source, relOut) {
+  const posix = String(relOut || '').replace(/\\/g, '/');
+  if (!posix.startsWith('tests/e2e/')) return source;
+  let s = String(source || '');
+  const correct = 'http://127.0.0.1:3000';
+  const patterns = [
+    [/http:\/\/localhost:5173\b/g, correct],
+    [/http:\/\/127\.0\.0\.1:5173\b/g, correct],
+    [/https:\/\/localhost:5173\b/g, correct],
+    [/https:\/\/127\.0\.0\.1:5173\b/g, correct],
+    [/['"]http:\/\/localhost:5173\/?['"]/g, `'${correct}/'`],
+  ];
+  for (const [re, repl] of patterns) {
+    s = s.replace(re, repl);
+  }
+  s = s.replace(/\bBASE_URL\s*=\s*['"]http:\/\/localhost:5173\/?['"]/g, `BASE_URL = '${correct}'`);
+  s = s.replace(/\bBASE_URL\s*=\s*['"]http:\/\/127\.0\.0\.1:5173\/?['"]/g, `BASE_URL = '${correct}'`);
+  return s;
+}
+
+/**
  * @param {string} source raw model output after markdown fence removal
+ * @param {{ relOut?: string }} [options]
  * @returns {string}
  */
-function sanitizeGeneratedTestSource(source) {
+function sanitizeGeneratedTestSource(source, options = {}) {
   let s = stripBom(source);
   s = stripLeadingGarbageIdentifierLines(s);
   s = stripPlaywrightWaitForTimeout(s);
+  s = normalizeE2ePlaywrightBaseUrl(s, options.relOut);
   return s.trim();
 }
 
 module.exports = {
   sanitizeGeneratedTestSource,
   stripPlaywrightWaitForTimeout,
+  normalizeE2ePlaywrightBaseUrl,
   stripBom,
   stripLeadingGarbageIdentifierLines,
 };

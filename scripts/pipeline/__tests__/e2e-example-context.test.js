@@ -17,5 +17,7 @@ describe('example e2e manifest (specs/pipeline/examples/e2e.manifest.json)', () 
     expect(bundle).toContain('error-email');
     expect(bundle).toContain('submit-status-success');
     expect(bundle).toContain('Please enter a valid email address');
+    expect(bundle).toContain('127.0.0.1:3000');
+    expect(bundle).toMatch(/5173|port 3000/);
   });
 });

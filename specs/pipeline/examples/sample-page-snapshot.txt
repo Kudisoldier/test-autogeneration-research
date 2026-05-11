@@ -1,5 +1,7 @@
 # Minimized accessibility-oriented snapshot — Feedback app (client/src/App.jsx + FeedbackForm + FeedbackList)
 
+**Runtime:** UI is served at **`http://127.0.0.1:3000`** (repo root `playwright.config.js` `use.baseURL`; `webServer` runs `npm run dev`). Vite is configured for **port 3000** in `client/vite.config.js`, not the Vite default **5173**. E2E tests should use `await page.goto('/')` (relative to `baseURL`) — not `http://localhost:5173`.
+
 This file is the contract for E2E selectors. It mirrors `FeedbackForm.jsx`, `App.jsx`, and `FeedbackList.jsx`.
 Validation copy comes from `client/src/utils/validation.js` (exact strings below).
 

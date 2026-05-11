@@ -565,12 +565,13 @@ ${guide}
 CRITICAL REQUIREMENTS:
 1. Generate a COMPLETE test file - ensure the file is fully finished with all closing braces
 2. Generate a complete E2E test file using Playwright
-3. Test complete user flows mentioned in the specification
-4. Use data-testid attributes for element selection
-5. Include proper waits and assertions
-6. Test both happy paths and error scenarios
-7. Ensure the file ends properly with closing braces for all blocks
-8. Return only the test code, no explanations, no markdown code blocks
+3. This project uses Playwright baseURL **http://127.0.0.1:3000** (root playwright.config.js) with Vite on **port 3000** — NOT Vite’s default **5173**. Use **await page.goto('/')** or that origin; do not use http://localhost:5173 unless you are targeting a different project.
+4. Test complete user flows mentioned in the specification
+5. Use data-testid attributes for element selection
+6. Include proper waits and assertions (no page.waitForTimeout)
+7. Test both happy paths and error scenarios
+8. Ensure the file ends properly with closing braces for all blocks
+9. Return only the test code, no explanations, no markdown code blocks
 
 Generate the COMPLETE test file now:`;
 }

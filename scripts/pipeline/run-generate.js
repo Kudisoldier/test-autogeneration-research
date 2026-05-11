@@ -98,9 +98,9 @@ async function main() {
   cleaned = cleaned.replace(/^```(?:javascript|js|ts|tsx|jsx)?\n?/gm, '');
   cleaned = cleaned.replace(/\n?```$/gm, '');
   cleaned = cleaned.trim();
-  cleaned = sanitizeGeneratedTestSource(cleaned);
 
   const relOut = manifest.output_policy.primary_test_file.replace(/\\/g, '/');
+  cleaned = sanitizeGeneratedTestSource(cleaned, { relOut });
   cleaned = fixEsmSpecifierDepthForNestedTests(cleaned, relOut, manifest.files || []);
 
   const absOut = path.join(runDir, 'generated', relOut);
