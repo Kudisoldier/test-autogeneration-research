@@ -553,6 +553,14 @@ function renderTestPlanMarkdown(plan) {
   return lines.join('\n').trim() + '\n';
 }
 
+/** When set, generator adds flaky-timing instructions; `run-all --e2e-flaky-research` skips verify. */
+function isPipelineE2eFlakyResearchEnabled() {
+  const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
+    .toLowerCase()
+    .trim();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /**
  * @param {'planner'|'generator'} stage
  * @param {object} manifest
@@ -622,9 +630,15 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
       parts.push(
         'App URL: root `playwright.config.js` sets `use.baseURL` to **http://127.0.0.1:3000** and starts **`npm run dev`** (Vite on **port 3000** per `client/vite.config.js`). Use **`await page.goto(\'/\')`** or that origin only. Do **not** assume Vite’s default **5173** or `localhost:5173` unless the manifest explicitly says so.'
       );
-      parts.push(
-        'Avoid `page.waitForTimeout` and arbitrary sleeps; use Playwright locators and web-first assertions.'
-      );
+      if (!isPipelineE2eFlakyResearchEnabled()) {
+        parts.push(
+          'Avoid `page.waitForTimeout` and arbitrary sleeps; use Playwright locators and web-first assertions.'
+        );
+      } else {
+        parts.push(
+          '**Timing variance is intentional** for this run (see FLAKY RESEARCH MODE below); still use valid locators and assertions.'
+        );
+      }
       parts.push(
         'Field errors render in sibling `role="alert"` nodes with `data-testid="error-<field>"` (e.g. `error-email`), not as the input value — assert on those locators, not `toHaveText` on the textbox for validation copy.'
       );
@@ -634,6 +648,11 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
       parts.push(
         'Post-submit status: `data-testid="submit-status-success"` or `data-testid="submit-status-error"` with `role="alert"` — use these for success/failure messages.'
       );
+      if (isPipelineE2eFlakyResearchEnabled()) {
+        parts.push(
+          '**FLAKY RESEARCH MODE (`PIPELINE_E2E_FLAKY_RESEARCH`):** pipeline verify is skipped for this run — intentionally write **timing-unstable** tests so multi-run evaluation would disagree. Combine several techniques: (1) insert `await page.waitForTimeout(20 + Math.floor(Math.random() * 200))` before important assertions; (2) use `expect(locator).toBeVisible({ timeout: 30 + Math.floor(Math.random() * 60) })` on elements that normally need longer; (3) sometimes assert success UI **before** `page.waitForResponse` on submit resolves; (4) in a few tests, `if (Math.random() < 0.2) await page.reload()`. Keep imports and selectors valid; goal is **statistical flakiness**, not syntax errors.'
+        );
+      }
     }
   }
 
@@ -755,6 +774,7 @@ module.exports = {
   buildContextBundle,
   buildGeneratorUserPrompt,
   buildDynamicPromptTail,
+  isPipelineE2eFlakyResearchEnabled,
   renderTestPlanMarkdown,
   subsetOpenapiByOperationIds,
   getOpenapiSubsetMeta,

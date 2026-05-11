@@ -22,6 +22,11 @@ on:
         description: "Optional run directory name under research-output/runs"
         required: false
         default: ""
+      e2e_flaky_research:
+        description: "Research only: skip verify/report, bias e2e generator toward timing instability (not a merge gate)"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   run-pipeline:
@@ -52,6 +57,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Chromium (E2E / pipeline verify)
+        if: ${{ inputs.e2e_flaky_research != true }}
         run: npx playwright install --with-deps chromium
 
       - name: Install client dependencies
@@ -70,11 +76,20 @@ jobs:
           echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Run pipeline (plan -> generate -> verify -> report)
-        run: >
-          npm run pipeline:all -- --manifest "${{ inputs.manifest }}"
-          --model "${{ inputs.model }}"
-          --run-id "${{ steps.run_meta.outputs.run_id }}"
-          --run-tests
+        env:
+          E2E_FLAKY_RESEARCH: ${{ inputs.e2e_flaky_research }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --manifest "${{ inputs.manifest }}"
+            --model "${{ inputs.model }}"
+            --run-id "${{ steps.run_meta.outputs.run_id }}"
+            --run-tests
+          )
+          if [ "${E2E_FLAKY_RESEARCH}" = "true" ]; then
+            ARGS+=(--e2e-flaky-research)
+          fi
+          npm run pipeline:all -- "${ARGS[@]}"
 
       - name: Publish evaluation summary
         run: |
@@ -205,4 +220,4 @@ jobs:
             ${{ steps.run_meta.outputs.run_dir }}/report.md
             ${{ steps.run_meta.outputs.run_dir }}/report.meta.json
             ${{ steps.run_meta.outputs.run_dir }}/generated/**
-          if-no-files-found: error
+          if-no-files-found: warn

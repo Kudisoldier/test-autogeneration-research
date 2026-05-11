@@ -67,4 +67,28 @@ describe('sanitizeGeneratedTestSource', () => {
     expect(out).toContain('127.0.0.1:3000');
     expect(out).not.toContain('5173');
   });
+
+  it('removes waitForTimeout in sanitize by default', () => {
+    const prev = process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+    delete process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+    try {
+      const src = `await page.waitForTimeout(500);\nawait expect(x).toBe(1);\n`;
+      expect(sanitizeGeneratedTestSource(src)).not.toContain('waitForTimeout');
+    } finally {
+      if (prev === undefined) delete process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+      else process.env.PIPELINE_E2E_FLAKY_RESEARCH = prev;
+    }
+  });
+
+  it('keeps waitForTimeout when PIPELINE_E2E_FLAKY_RESEARCH=1', () => {
+    const prev = process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+    process.env.PIPELINE_E2E_FLAKY_RESEARCH = '1';
+    try {
+      const src = `await page.waitForTimeout(500);\nawait expect(x).toBe(1);\n`;
+      expect(sanitizeGeneratedTestSource(src)).toContain('waitForTimeout');
+    } finally {
+      if (prev === undefined) delete process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+      else process.env.PIPELINE_E2E_FLAKY_RESEARCH = prev;
+    }
+  });
 });

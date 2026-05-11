@@ -6,6 +6,7 @@
  *   node scripts/pipeline/run-all.js --manifest specs/pipeline/examples/unit_ui.manifest.json --model qwen/qwen-2.5-7b-instruct:free
  */
 
+const fs = require('fs');
 const { execSync } = require('child_process');
 const path = require('path');
 const { program } = require('commander');
@@ -20,6 +21,15 @@ function parseRunDir(planStdout) {
 
 function escapeArg(s) {
   return JSON.stringify(s);
+}
+
+/** Research / stress mode: skip verify+report; generator sees PIPELINE_E2E_FLAKY_RESEARCH for flaky-biased e2e. */
+function e2eFlakyResearchEnabled(opts) {
+  if (opts.e2eFlakyResearch) return true;
+  const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
+    .toLowerCase()
+    .trim();
+  return v === '1' || v === 'true' || v === 'yes';
 }
 
 async function main() {
@@ -44,6 +54,10 @@ async function main() {
     .option('--no-plan-case-comments', 'Pass to planner and generator')
     .option('--run-tests', 'Pass to verify stage')
     .option('--no-report', 'Skip the reporter stage even when --run-tests is set')
+    .option(
+      '--e2e-flaky-research',
+      'Skip verify and report; set PIPELINE_E2E_FLAKY_RESEARCH=1 for generate (e2e flaky-timing research only; not merge gates)'
+    )
     .parse();
 
   const o = program.opts();
@@ -70,17 +84,31 @@ async function main() {
     process.exit(1);
   }
 
+  const flakyResearch = e2eFlakyResearchEnabled(o);
+  const genEnv = flakyResearch ? { ...process.env, PIPELINE_E2E_FLAKY_RESEARCH: '1' } : process.env;
+
   const genCmd = `node scripts/pipeline/run-generate.js --run-dir ${escapeArg(runDir)} --model ${escapeArg(o.model)}${preset}${gt}${gtp}${gmt}${sel}${noPc}`;
-  execSync(genCmd, { cwd: repoRoot, stdio: 'inherit', env: process.env });
+  execSync(genCmd, { cwd: repoRoot, stdio: 'inherit', env: genEnv });
 
-  const verifyArgs = o.runTests ? ' --run-tests' : '';
-  execSync(`node scripts/pipeline/run-verify.js --run-dir ${escapeArg(runDir)}${verifyArgs}`, {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    env: process.env,
-  });
+  if (flakyResearch) {
+    const verifyLogPath = path.join(repoRoot, runDir, 'verify.log');
+    fs.mkdirSync(path.dirname(verifyLogPath), { recursive: true });
+    fs.writeFileSync(
+      verifyLogPath,
+      'SKIP verify (--e2e-flaky-research / PIPELINE_E2E_FLAKY_RESEARCH)\n',
+      'utf-8'
+    );
+    console.log('\n[pipeline] SKIP verify + report (e2e flaky research mode)\n');
+  } else {
+    const verifyArgs = o.runTests ? ' --run-tests' : '';
+    execSync(`node scripts/pipeline/run-verify.js --run-dir ${escapeArg(runDir)}${verifyArgs}`, {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: process.env,
+    });
+  }
 
-  const shouldReport = o.runTests && o.report !== false;
+  const shouldReport = o.runTests && o.report !== false && !flakyResearch;
   if (shouldReport) {
     const reporterModel = o.reporterModel || o.model;
     const rt = o.reporterTemperature != null ? ` --reporter-temperature ${o.reporterTemperature}` : '';

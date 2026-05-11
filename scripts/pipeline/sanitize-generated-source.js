@@ -87,6 +87,13 @@ function normalizeE2ePlaywrightBaseUrl(source, relOut) {
   return s;
 }
 
+function isPipelineE2eFlakyResearchEnv() {
+  const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
+    .toLowerCase()
+    .trim();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /**
  * @param {string} source raw model output after markdown fence removal
  * @param {{ relOut?: string }} [options]
@@ -95,7 +102,9 @@ function normalizeE2ePlaywrightBaseUrl(source, relOut) {
 function sanitizeGeneratedTestSource(source, options = {}) {
   let s = stripBom(source);
   s = stripLeadingGarbageIdentifierLines(s);
-  s = stripPlaywrightWaitForTimeout(s);
+  if (!isPipelineE2eFlakyResearchEnv()) {
+    s = stripPlaywrightWaitForTimeout(s);
+  }
   s = normalizeE2ePlaywrightBaseUrl(s, options.relOut);
   return s.trim();
 }
