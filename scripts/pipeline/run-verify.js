@@ -19,6 +19,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { program } = require('commander');
 const { generateReport } = require('../evaluate-tests.js');
+const { collectCoverageFromForJest } = require('./jest-collect-coverage-from.js');
 
 const RULES_PATH = path.join(__dirname, 'verify-rules.json');
 const PLAN_CASE_RE = /\/\/\s*plan-case:\s*([a-zA-Z0-9_-]+)/g;
@@ -285,10 +286,11 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
   const out = outFile.replace(/"/g, '\\"');
   const testPath = destAbs.replace(/"/g, '\\"');
   const covDirEsc = coverageDir.replace(/"/g, '\\"');
-  const covSourceEsc = String(coverageSourceRel || '').replace(/"/g, '\\"');
+  const covFromPattern = collectCoverageFromForJest(jestConfigAbs, coverageSourceRel);
+  const covFromEsc = String(covFromPattern || '').replace(/"/g, '\\"');
   const coverageArgs =
-    coverageSourceRel && covSourceEsc.length
-      ? ` --coverage --coverageReporters=json-summary --coverageDirectory "${covDirEsc}" --collectCoverageFrom "${covSourceEsc}"`
+    covFromPattern && covFromEsc.length
+      ? ` --coverage --coverageReporters=json-summary --coverageDirectory "${covDirEsc}" --collectCoverageFrom "${covFromEsc}"`
       : '';
   const cmd = `npx jest --config "${cfg}" --runTestsByPath --json --outputFile "${out}"${coverageArgs} -- "${testPath}"`;
 
