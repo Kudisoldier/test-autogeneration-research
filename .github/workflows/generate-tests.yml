@@ -107,6 +107,16 @@ jobs:
             md += `| Flaky failures | ${summary.flakyFailures || 0} |\n`;
             md += `| Flaky test rate | ${((summary.flakyTestRate || 0) * 100).toFixed(1)}% |\n`;
             md += `| Avg TTG (s) | ${(summary.ttgSecondsAvg || 0).toFixed(3)} |\n\n`;
+
+            const byTypeCoverage = report.byTypeCoverage || {};
+            const unitCoverage = byTypeCoverage.unit || {};
+            const integrationCoverage = byTypeCoverage.integration || {};
+            const pct = (v) => typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)}%` : "n/a";
+            md += "### Code Coverage (lines)\n\n";
+            md += "| Test type | Generated |\n";
+            md += "|---|---:|\n";
+            md += `| Unit | ${pct(unitCoverage.generatedLinesPct)} |\n`;
+            md += `| Integration | ${pct(integrationCoverage.generatedLinesPct)} |\n\n`;
           } else {
             md += "Evaluation report was not found.\n\n";
           }

@@ -145,6 +145,95 @@ async function readJsonIfExists(filePath, fallback = null) {
   }
 }
 
+function normalizeRel(p) {
+  return String(p || '').replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function resolveCoverageSourceRel(manifest, evalType) {
+  if (evalType !== 'unit' && evalType !== 'integration') return null;
+  if (!manifest || typeof manifest !== 'object') return null;
+
+  const target = normalizeRel(manifest.target_module);
+  if (target && /\.(js|jsx)$/.test(target)) return target;
+
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  for (const f of files) {
+    const p = normalizeRel(f && f.path);
+    if (p && /\.(js|jsx)$/.test(p)) return p;
+  }
+  return null;
+}
+
+function readCoverageLinesPct(summaryPath, sourceRel) {
+  try {
+    if (!fsSync.existsSync(summaryPath)) return null;
+    const raw = fsSync.readFileSync(summaryPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    const normSource = normalizeRel(sourceRel);
+
+    if (normSource) {
+      const keys = Object.keys(parsed || {});
+      for (const k of keys) {
+        const nk = normalizeRel(k);
+        if (nk === normSource || nk.endsWith(`/${normSource}`)) {
+          const pct = parsed[k] && parsed[k].lines && parsed[k].lines.pct;
+          if (typeof pct === 'number' && Number.isFinite(pct)) return pct;
+        }
+      }
+    }
+
+    const totalPct = parsed && parsed.total && parsed.total.lines && parsed.total.lines.pct;
+    if (typeof totalPct === 'number' && Number.isFinite(totalPct)) return totalPct;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildCoverageAggregates(results) {
+  const byTypeCoverage = {};
+  for (const type of ['unit', 'integration', 'e2e']) {
+    const rows = (Array.isArray(results) ? results : []).filter(
+      (r) => r && r.type === type && typeof r.coverageGenerated === 'number' && Number.isFinite(r.coverageGenerated)
+    );
+    if (rows.length === 0) {
+      byTypeCoverage[type] = { baselineLinesPct: null, generatedLinesPct: null, deltaLinesPct: null };
+      continue;
+    }
+    const avgGen = rows.reduce((sum, r) => sum + r.coverageGenerated, 0) / rows.length;
+    const baselineRows = rows.filter((r) => typeof r.coverageBaseline === 'number' && Number.isFinite(r.coverageBaseline));
+    const avgBaseline = baselineRows.length
+      ? baselineRows.reduce((sum, r) => sum + r.coverageBaseline, 0) / baselineRows.length
+      : null;
+    byTypeCoverage[type] = {
+      baselineLinesPct: avgBaseline,
+      generatedLinesPct: avgGen,
+      deltaLinesPct: avgBaseline == null ? null : avgGen - avgBaseline,
+    };
+  }
+
+  const byModelTypeCoverage = {};
+  for (const r of Array.isArray(results) ? results : []) {
+    if (!r || typeof r.coverageGenerated !== 'number' || !Number.isFinite(r.coverageGenerated)) continue;
+    const key = `${r.model || 'unknown'}::${r.type || 'unknown'}::${r.testFileName || path.basename(r.file || '')}`;
+    byModelTypeCoverage[key] = {
+      model: r.model || 'unknown',
+      type: r.type || 'unknown',
+      testFile: r.testFileName || path.basename(r.file || ''),
+      sourceFile: r.coverageSourceFile || null,
+      baselineLinesPct:
+        typeof r.coverageBaseline === 'number' && Number.isFinite(r.coverageBaseline) ? r.coverageBaseline : null,
+      generatedLinesPct: r.coverageGenerated,
+      deltaLinesPct:
+        typeof r.coverageBaseline === 'number' && Number.isFinite(r.coverageBaseline)
+          ? r.coverageGenerated - r.coverageBaseline
+          : null,
+    };
+  }
+
+  return { byTypeCoverage, byModelTypeCoverage };
+}
+
 /**
  * @returns {{ testCount: number, passCount: number, failCount: number, passes: boolean }}
  */
@@ -189,12 +278,19 @@ function assertionResultsFromJestData(data) {
  * Run Jest with JSON output for one staged file; never throws (records failure in return value).
  * @returns {{ runs: boolean, passes: boolean, testCount: number, passCount: number, failCount: number, output: string, errorOutput: string }}
  */
-function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines) {
+function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageSourceRel = null) {
   const outFile = path.join(runDir, `.jest-pipeline-${crypto.randomBytes(8).toString('hex')}.json`);
+  const coverageDir = path.join(runDir, `.coverage-pipeline-${crypto.randomBytes(8).toString('hex')}`);
   const cfg = jestConfigAbs.replace(/"/g, '\\"');
   const out = outFile.replace(/"/g, '\\"');
   const testPath = destAbs.replace(/"/g, '\\"');
-  const cmd = `npx jest --config "${cfg}" --json --outputFile "${out}" -- "${testPath}"`;
+  const covDirEsc = coverageDir.replace(/"/g, '\\"');
+  const covSourceEsc = String(coverageSourceRel || '').replace(/"/g, '\\"');
+  const coverageArgs =
+    coverageSourceRel && covSourceEsc.length
+      ? ` --coverage --coverageReporters=json-summary --coverageDirectory "${covDirEsc}" --collectCoverageFrom "${covSourceEsc}"`
+      : '';
+  const cmd = `npx jest --config "${cfg}" --runTestsByPath --json --outputFile "${out}"${coverageArgs} -- "${testPath}"`;
 
   let stdout = '';
   let stderr = '';
@@ -223,12 +319,18 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines) {
       fsSync.unlinkSync(outFile);
       const data = JSON.parse(raw);
       const parsed = metricsFromJestData(data);
+      const coveragePct = readCoverageLinesPct(path.join(coverageDir, 'coverage-summary.json'), coverageSourceRel);
       return {
         runs: true,
         passes: parsed.passes,
         testCount: parsed.testCount,
         passCount: parsed.passCount,
         failCount: parsed.failCount,
+        coverageGenerated: coveragePct,
+        coverageWithTest: coveragePct,
+        coverageBaseline: null,
+        coverageDelta: null,
+        coverageSourceFile: coverageSourceRel,
         assertionResults: assertionResultsFromJestData(data),
         output: tail(stdout, 4000),
         errorOutput: tail(stderr, 4000),
@@ -247,12 +349,18 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines) {
   try {
     const data = JSON.parse(stdout);
     const parsed = metricsFromJestData(data);
+    const coveragePct = readCoverageLinesPct(path.join(coverageDir, 'coverage-summary.json'), coverageSourceRel);
     return {
       runs: true,
       passes: parsed.passes,
       testCount: parsed.testCount,
       passCount: parsed.passCount,
       failCount: parsed.failCount,
+      coverageGenerated: coveragePct,
+      coverageWithTest: coveragePct,
+      coverageBaseline: null,
+      coverageDelta: null,
+      coverageSourceFile: coverageSourceRel,
       assertionResults: assertionResultsFromJestData(data),
       output: tail(stdout, 4000),
       errorOutput: tail(stderr, 4000),
@@ -267,6 +375,11 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines) {
     testCount: 0,
     passCount: 0,
     failCount: 0,
+    coverageGenerated: null,
+    coverageWithTest: null,
+    coverageBaseline: null,
+    coverageDelta: null,
+    coverageSourceFile: coverageSourceRel,
     assertionResults: [],
     output: tail(stdout, 4000),
     errorOutput: tail(stderr || `jest exit ${exitCode}, no JSON output`, 4000),
@@ -279,7 +392,7 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines) {
 /**
  * @param {Array<{abs:string, rel:string, dest:string}>} stagedFiles
  */
-function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLines) {
+function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLines, coverageSourceRel = null) {
   const rows = [];
   for (const f of stagedFiles) {
     const rel = f.rel.replace(/\\/g, '/');
@@ -293,6 +406,11 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
           testCount: 0,
           passCount: 0,
           failCount: 0,
+          coverageGenerated: null,
+          coverageWithTest: null,
+          coverageBaseline: null,
+          coverageDelta: null,
+          coverageSourceFile: coverageSourceRel,
           assertionResults: [],
           output: '',
           errorOutput: 'e2e execution not supported in pipeline:verify yet',
@@ -305,13 +423,20 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
 
     let jestResult;
     if (rel.startsWith('server/')) {
-      jestResult = runJestOnStagedFile(f.dest, path.join(projectRoot, 'jest.config.js'), runDir, logLines);
+      jestResult = runJestOnStagedFile(
+        f.dest,
+        path.join(projectRoot, 'jest.config.js'),
+        runDir,
+        logLines,
+        coverageSourceRel
+      );
     } else if (rel.startsWith('client/')) {
       jestResult = runJestOnStagedFile(
         f.dest,
         path.join(projectRoot, 'client', 'jest.config.js'),
         runDir,
-        logLines
+        logLines,
+        coverageSourceRel
       );
     } else {
       jestResult = {
@@ -320,6 +445,11 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
         testCount: 0,
         passCount: 0,
         failCount: 0,
+        coverageGenerated: null,
+        coverageWithTest: null,
+        coverageBaseline: null,
+        coverageDelta: null,
+        coverageSourceFile: coverageSourceRel,
         assertionResults: [],
         output: '',
         errorOutput: `No Jest profile for generated path prefix: ${rel} (expected server/ or client/)`,
@@ -350,12 +480,12 @@ function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) 
     testCount: j.testCount,
     passCount: j.passCount,
     failCount: j.failCount,
-    coverage: null,
-    coverageDelta: null,
-    coverageBaseline: null,
-    coverageGenerated: null,
-    coverageWithTest: null,
-    coverageSourceFile: null,
+    coverage: typeof j.coverageGenerated === 'number' ? j.coverageGenerated : null,
+    coverageDelta: typeof j.coverageDelta === 'number' ? j.coverageDelta : null,
+    coverageBaseline: typeof j.coverageBaseline === 'number' ? j.coverageBaseline : null,
+    coverageGenerated: typeof j.coverageGenerated === 'number' ? j.coverageGenerated : null,
+    coverageWithTest: typeof j.coverageWithTest === 'number' ? j.coverageWithTest : null,
+    coverageSourceFile: j.coverageSourceFile || null,
     logPath: null,
     rootCause: null,
     ttgSeconds,
@@ -503,6 +633,7 @@ async function main() {
     const genMeta = (await readJsonIfExists(path.join(runDir, 'generate.meta.json'), {})) || {};
 
     const evalType = mapTestLevelToType(manifest.test_level);
+    const coverageSourceRel = resolveCoverageSourceRel(manifest, evalType);
     const model = genMeta.model || planMeta.model || 'unknown';
     const ttgSeconds =
       (typeof planMeta.seconds === 'number' ? planMeta.seconds : 0) +
@@ -516,9 +647,12 @@ async function main() {
         rel: f.rel.replace(/\\/g, '/'),
         dest: path.join(projectRoot, f.rel.replace(/\\/g, '/')),
       }));
-      const jestRows = collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLines);
+      const jestRows = collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLines, coverageSourceRel);
       const results = jestRows.map((r) => buildEvaluationRow(r.abs, r.rel, model, evalType, ttgSeconds, r.jest));
       const report = generateReport(results);
+      const coverageAgg = buildCoverageAggregates(results);
+      report.byTypeCoverage = coverageAgg.byTypeCoverage;
+      report.byModelTypeCoverage = coverageAgg.byModelTypeCoverage;
       await fs.writeFile(path.join(runDir, 'evaluation-report.json'), JSON.stringify(report, null, 2), 'utf-8');
 
       const perTestRows = jestRows.map((r) => ({
