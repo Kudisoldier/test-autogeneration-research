@@ -14,6 +14,7 @@
     "test:pipeline": "jest --testPathPattern=scripts/pipeline --passWithNoTests",
     "test:client": "cd client && npm test",
     "test:e2e": "npx playwright test",
+    "test:e2e-flaky-probe": "node scripts/run-e2e-flaky-rate-probe.js",
     "test:all": "npm run test && npm run test:e2e",
     "generate:test": "node scripts/generate-tests.js",
     "generate:all": "node scripts/generate-tests.js --all",

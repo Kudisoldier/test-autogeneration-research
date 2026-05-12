@@ -5,7 +5,8 @@
  * so verify can feed `evaluation-report.json` / `jest-results.json` / coverage matrix.
  *
  * `aggregateE2ePipelineRuns` merges N single-run summaries using the same rules as
- * `evaluateTestFile` in `evaluate-tests.js` (signature variance → flaky, FTR numerator).
+ * `evaluateTestFile` in `evaluate-tests.js` (signature variance → flaky; repeatRunFailureSum
+ * sums per-run failCount; flakyFailureCount only when flaky).
  */
 
 function tail(s, maxLen) {
@@ -16,7 +17,7 @@ function tail(s, maxLen) {
 /**
  * @param {Array<object>} runResults same shape as single-run playwright summary + coverage nulls
  * @param {number} repeatRuns attempted outer runs (e.g. 3)
- * @returns {object} jest-compatible summary including flaky, flakyFailureCount, totalRunCount, errors
+ * @returns {object} jest-compatible summary including flaky, flakyFailureCount, repeatRunFailureSum, totalRunCount, errors
  */
 function aggregateE2ePipelineRuns(runResults, repeatRuns) {
   const runsN = Math.max(1, Number(repeatRuns) || 1);
@@ -51,6 +52,10 @@ function aggregateE2ePipelineRuns(runResults, repeatRuns) {
   const flakyFailureCount = flaky
     ? history.reduce((sum, h) => sum + (Number.isFinite(h.failCount) ? h.failCount : 0), 0)
     : 0;
+  const repeatRunFailureSum = history.reduce(
+    (sum, h) => sum + (Number.isFinite(h.failCount) ? h.failCount : 0),
+    0
+  );
 
   const errors = [];
   if (flaky) {
@@ -90,6 +95,7 @@ function aggregateE2ePipelineRuns(runResults, repeatRuns) {
     errorOutput: tail(errorOutput, 8000),
     flaky,
     flakyFailureCount,
+    repeatRunFailureSum,
     totalRunCount: runsN,
     errors,
   };

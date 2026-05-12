@@ -73,7 +73,27 @@ describe('generateReport repeatRuns / flaky metrics', () => {
     expect(report.summary.repeatRuns).toBe(3);
     expect(report.summary.flakyMultiRunEvaluation).toBe(true);
     expect(report.summary.flakyFailures).toBe(2);
+    expect(report.summary.repeatRunFailures).toBe(2);
     expect(report.summary.totalTestRuns).toBe(15);
     expect(report.summary.flakyTestRate).toBeCloseTo((2 / 15) * 100, 5);
+  });
+
+  it('counts repeat-run failures for stable (non-flaky) multi-run failures in flakyTestRate', () => {
+    const report = generateReport([
+      detailRow({
+        totalRunCount: 3,
+        flaky: false,
+        flakyFailureCount: 0,
+        testCount: 5,
+        passCount: 0,
+        failCount: 2,
+        passes: false,
+      }),
+    ]);
+    expect(report.summary.flakyFiles).toBe(0);
+    expect(report.summary.flakyFailures).toBe(0);
+    expect(report.summary.repeatRunFailures).toBe(6);
+    expect(report.summary.totalTestRuns).toBe(15);
+    expect(report.summary.flakyTestRate).toBeCloseTo((6 / 15) * 100, 5);
   });
 });

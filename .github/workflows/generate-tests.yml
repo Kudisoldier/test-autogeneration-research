@@ -107,8 +107,9 @@ jobs:
             md += "| Additional Metric | Value |\n";
             md += "|---|---:|\n";
             md += `| Flaky files | ${summary.flakyFiles || 0} |\n`;
-            md += `| Flaky failures | ${summary.flakyFailures || 0} |\n`;
-            md += `| Flaky test rate | ${Number(summary.flakyTestRate || 0).toFixed(1)}% |\n`;
+            md += `| Flaky failures (unstable files only) | ${summary.flakyFailures || 0} |\n`;
+            md += `| Repeat-run failures (all files) | ${summary.repeatRunFailures != null ? summary.repeatRunFailures : 0} |\n`;
+            md += `| Flaky test rate (repeat-run failures / test runs) | ${Number(summary.flakyTestRate || 0).toFixed(1)}% |\n`;
             md += `| Repeat runs per file (max) | ${summary.repeatRuns != null ? summary.repeatRuns : "n/a"} |\n`;
             md += `| Flaky multi-run evaluation | ${summary.flakyMultiRunEvaluation ? "yes" : "no"} |\n`;
             md += `| Avg TTG (s) | ${(summary.ttgSecondsAvg || 0).toFixed(3)} |\n\n`;

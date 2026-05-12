@@ -343,6 +343,7 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
         testCount: parsed.testCount,
         passCount: parsed.passCount,
         failCount: parsed.failCount,
+        repeatRunFailureSum: parsed.failCount,
         coverageGenerated: coveragePct,
         coverageWithTest: coveragePct,
         coverageBaseline: null,
@@ -373,6 +374,7 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
       testCount: parsed.testCount,
       passCount: parsed.passCount,
       failCount: parsed.failCount,
+      repeatRunFailureSum: parsed.failCount,
       coverageGenerated: coveragePct,
       coverageWithTest: coveragePct,
       coverageBaseline: null,
@@ -392,6 +394,7 @@ function runJestOnStagedFile(destAbs, jestConfigAbs, runDir, logLines, coverageS
     testCount: 0,
     passCount: 0,
     failCount: 0,
+    repeatRunFailureSum: 0,
     coverageGenerated: null,
     coverageWithTest: null,
     coverageBaseline: null,
@@ -422,6 +425,7 @@ function emptyPlaywrightSummary() {
     errorOutput: '',
     flaky: false,
     flakyFailureCount: 0,
+    repeatRunFailureSum: 0,
     totalRunCount: 1,
     errors: [],
   };
@@ -478,6 +482,7 @@ function runPlaywrightOnceOnStagedFile(relPosix, logLines) {
       errorOutput: tail(stderr, 4000),
       flaky: false,
       flakyFailureCount: 0,
+      repeatRunFailureSum: s.failCount,
       totalRunCount: 1,
       errors: [],
     };
@@ -562,6 +567,11 @@ function collectJestResultsForStagedFiles(stagedFiles, evalType, runDir, logLine
         testCount: 0,
         passCount: 0,
         failCount: 0,
+        flaky: false,
+        flakyFailureCount: 0,
+        repeatRunFailureSum: 0,
+        totalRunCount: 1,
+        errors: [],
         coverageGenerated: null,
         coverageWithTest: null,
         coverageBaseline: null,
@@ -591,6 +601,13 @@ function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) 
   const flaky = j.flaky === true;
   const flakyFailureCount =
     typeof j.flakyFailureCount === 'number' && Number.isFinite(j.flakyFailureCount) ? j.flakyFailureCount : 0;
+  let repeatRunFailureSum;
+  if (typeof j.repeatRunFailureSum === 'number' && Number.isFinite(j.repeatRunFailureSum) && j.repeatRunFailureSum >= 0) {
+    repeatRunFailureSum = j.repeatRunFailureSum;
+  } else {
+    const fc = Number.isFinite(j.failCount) ? j.failCount : 0;
+    repeatRunFailureSum = flaky ? flakyFailureCount : totalRunCount * fc;
+  }
   const errors = Array.isArray(j.errors) ? [...j.errors] : [];
   return {
     file: abs,
@@ -616,6 +633,7 @@ function buildEvaluationRow(abs, rel, model, evalType, ttgSeconds, jestSummary) 
     ttgSeconds,
     flaky,
     flakyFailureCount,
+    repeatRunFailureSum,
     totalRunCount,
     output: j.output,
     errorOutput: j.errorOutput,
@@ -793,6 +811,20 @@ async function main() {
           typeof r.jest.flakyFailureCount === 'number' && Number.isFinite(r.jest.flakyFailureCount)
             ? r.jest.flakyFailureCount
             : 0,
+        repeatRunFailureSum:
+          typeof r.jest.repeatRunFailureSum === 'number' && Number.isFinite(r.jest.repeatRunFailureSum)
+            ? r.jest.repeatRunFailureSum
+            : (() => {
+                const runsN =
+                  typeof r.jest.totalRunCount === 'number' && r.jest.totalRunCount >= 1 ? r.jest.totalRunCount : 1;
+                const fc = typeof r.jest.failCount === 'number' ? r.jest.failCount : 0;
+                const isFlaky = r.jest.flaky === true;
+                const ffc =
+                  typeof r.jest.flakyFailureCount === 'number' && Number.isFinite(r.jest.flakyFailureCount)
+                    ? r.jest.flakyFailureCount
+                    : 0;
+                return isFlaky ? ffc : runsN * fc;
+              })(),
         totalRunCount:
           typeof r.jest.totalRunCount === 'number' && r.jest.totalRunCount >= 1 ? r.jest.totalRunCount : 1,
       }));

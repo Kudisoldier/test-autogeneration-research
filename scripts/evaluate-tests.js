@@ -1822,12 +1822,13 @@ async function evaluateTestFile(testFilePath, modelName, testType) {
   base.runHistory = history;
   base.flaky = flaky;
 
-  // For FTR formula: flaky test rate = (number of flaky test failures / total test runs) * 100
-  // Count individual test failures (failCount) from flaky tests across all runs
   base.totalRunCount = runs;
+  // Sum of per-run fail counts for unstable files only (legacy flakyFailureCount; equals repeatRunFailureSum when flaky).
   base.flakyFailureCount = flaky
     ? history.reduce((sum, h) => sum + (h.failCount || 0), 0)
     : 0;
+  // Sum of per-run fail counts across all outer repeats (flakyTestRate numerator).
+  base.repeatRunFailureSum = history.reduce((sum, h) => sum + (h.failCount || 0), 0);
 
   if (flaky) {
     const passCountsText = history.map(h => (h.runs ? h.passCount : 'NR')).join(', ');
@@ -2058,6 +2059,25 @@ function inferFlakyMultiRunEvaluation(results) {
 }
 
 /**
+ * Sum of failed test-case counts across outer repeats (one term per run).
+ * Used for flakyTestRate = repeatRunFailures / totalTestRuns.
+ * Legacy rows without `repeatRunFailureSum` infer: flaky rows use flakyFailureCount (same sum we stored for flaky files);
+ * non-flaky multi-run assume stable failCount per run → totalRunCount * failCount.
+ */
+function repeatRunFailureSumFromRow(r) {
+  if (!r) return 0;
+  if (typeof r.repeatRunFailureSum === 'number' && Number.isFinite(r.repeatRunFailureSum) && r.repeatRunFailureSum >= 0) {
+    return r.repeatRunFailureSum;
+  }
+  const runs = typeof r.totalRunCount === 'number' && r.totalRunCount >= 1 ? r.totalRunCount : 1;
+  const fc = Number.isFinite(r.failCount) ? r.failCount : 0;
+  if (r.flaky && typeof r.flakyFailureCount === 'number' && Number.isFinite(r.flakyFailureCount) && r.flakyFailureCount >= 0) {
+    return r.flakyFailureCount;
+  }
+  return runs * fc;
+}
+
+/**
  * Generate evaluation report
  */
 function generateReport(results) {
@@ -2073,6 +2093,7 @@ function generateReport(results) {
   }, 0);
   const flakyFiles = results.filter(r => r.flaky).length;
   const flakyFailures = results.reduce((sum, r) => sum + (r.flakyFailureCount || 0), 0);
+  const repeatRunFailures = results.reduce((sum, r) => sum + repeatRunFailureSumFromRow(r), 0);
   const successRateFiles = results.length > 0 ? (results.filter(r => r.passes).length / results.length) * 100 : 0;
   const ttgValues = results.map(r => r.ttgSeconds).filter(v => typeof v === 'number' && Number.isFinite(v));
   const avgTTGSeconds = ttgValues.length > 0 ? (ttgValues.reduce((a, b) => a + b, 0) / ttgValues.length) : null;
@@ -2089,9 +2110,10 @@ function generateReport(results) {
       flakyFiles,
       flakyFileRate: results.length > 0 ? ((flakyFiles / results.length) * 100) : 0,
       flakyFailures,
+      repeatRunFailures,
       totalRuns: totalFileRuns,
       totalTestRuns,
-      flakyTestRate: totalTestRuns > 0 ? (flakyFailures / totalTestRuns) * 100 : 0, // FTR: flaky failures / total test runs
+      flakyTestRate: totalTestRuns > 0 ? (repeatRunFailures / totalTestRuns) * 100 : 0, // fail-instances across outer runs / all test executions
       repeatRuns: repeatRunsInferred,
       flakyMultiRunEvaluation,
       totalTests: results.reduce((sum, r) => sum + r.testCount, 0),
@@ -2112,6 +2134,7 @@ function generateReport(results) {
         passes: 0,
         flakyFiles: 0,
         flakyFailures: 0,
+        repeatRunFailures: 0,
         totalRuns: 0,
         totalTestRuns: 0,
         successRateFiles: 0,
@@ -2125,6 +2148,7 @@ function generateReport(results) {
     if (result.passes) report.byModel[result.model].passes++;
     if (result.flaky) report.byModel[result.model].flakyFiles++;
     report.byModel[result.model].flakyFailures += (result.flakyFailureCount || 0);
+    report.byModel[result.model].repeatRunFailures += repeatRunFailureSumFromRow(result);
     const runs = result.totalRunCount || FLAKY_RUNS || 1;
     report.byModel[result.model].totalRuns += runs;
     report.byModel[result.model].totalTestRuns += (runs * (result.testCount || 0));
@@ -2153,6 +2177,7 @@ function generateReport(results) {
         passes: 0,
         flakyFiles: 0,
         flakyFailures: 0,
+        repeatRunFailures: 0,
         totalRuns: 0,
         totalTestRuns: 0,
         successRateFiles: 0,
@@ -2166,6 +2191,7 @@ function generateReport(results) {
     if (result.passes) report.byModelType[key].passes++;
     if (result.flaky) report.byModelType[key].flakyFiles++;
     report.byModelType[key].flakyFailures += (result.flakyFailureCount || 0);
+    report.byModelType[key].repeatRunFailures += repeatRunFailureSumFromRow(result);
     const runs = result.totalRunCount || FLAKY_RUNS || 1;
     report.byModelType[key].totalRuns += runs;
     report.byModelType[key].totalTestRuns += (runs * (result.testCount || 0));
@@ -2210,6 +2236,7 @@ function generateReport(results) {
         passes: 0,
         flakyFiles: 0,
         flakyFailures: 0,
+        repeatRunFailures: 0,
         totalRuns: 0,
         totalTestRuns: 0,
         successRateFiles: 0,
@@ -2223,6 +2250,7 @@ function generateReport(results) {
     if (result.passes) report.byType[result.type].passes++;
     if (result.flaky) report.byType[result.type].flakyFiles++;
     report.byType[result.type].flakyFailures += (result.flakyFailureCount || 0);
+    report.byType[result.type].repeatRunFailures += repeatRunFailureSumFromRow(result);
     const runs = result.totalRunCount || FLAKY_RUNS || 1;
     report.byType[result.type].totalRuns += runs;
     report.byType[result.type].totalTestRuns += (runs * (result.testCount || 0));
@@ -2243,7 +2271,8 @@ function generateReport(results) {
   Object.values(report.byModelType).forEach(stats => {
     stats.successRateFiles = stats.total > 0 ? (stats.passes / stats.total) * 100 : 0; // SR
     stats.flakyFileRate = stats.total > 0 ? (stats.flakyFiles / stats.total) * 100 : 0;
-    stats.flakyTestRate = stats.totalTestRuns > 0 ? (stats.flakyFailures / stats.totalTestRuns) * 100 : 0; // FTR: flaky failures / total test runs
+    stats.flakyTestRate =
+      stats.totalTestRuns > 0 ? (stats.repeatRunFailures / stats.totalTestRuns) * 100 : 0; // repeat-run fail instances / total test runs
     if (stats._ttgCount) {
       stats.ttgSecondsAvg = stats._ttgSum / stats._ttgCount;
       delete stats._ttgSum;
@@ -2255,12 +2284,14 @@ function generateReport(results) {
   Object.values(report.byModel).forEach(stats => {
     stats.successRateFiles = stats.total > 0 ? (stats.passes / stats.total) * 100 : 0; // SR
     stats.flakyFileRate = stats.total > 0 ? (stats.flakyFiles / stats.total) * 100 : 0;
-    stats.flakyTestRate = stats.totalTestRuns > 0 ? (stats.flakyFailures / stats.totalTestRuns) * 100 : 0; // FTR: flaky failures / total test runs
+    stats.flakyTestRate =
+      stats.totalTestRuns > 0 ? (stats.repeatRunFailures / stats.totalTestRuns) * 100 : 0; // repeat-run fail instances / total test runs
   });
   Object.values(report.byType).forEach(stats => {
     stats.successRateFiles = stats.total > 0 ? (stats.passes / stats.total) * 100 : 0; // SR
     stats.flakyFileRate = stats.total > 0 ? (stats.flakyFiles / stats.total) * 100 : 0;
-    stats.flakyTestRate = stats.totalTestRuns > 0 ? (stats.flakyFailures / stats.totalTestRuns) * 100 : 0; // FTR: flaky failures / total test runs
+    stats.flakyTestRate =
+      stats.totalTestRuns > 0 ? (stats.repeatRunFailures / stats.totalTestRuns) * 100 : 0; // repeat-run fail instances / total test runs
   });
 
   // TTG averages per model/type (best effort: only for files with meta)
@@ -2392,4 +2423,5 @@ module.exports = {
   FLAKY_RUNS,
   inferRepeatRunsFromDetailResults,
   inferFlakyMultiRunEvaluation,
+  repeatRunFailureSumFromRow,
 };
