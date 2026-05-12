@@ -25,6 +25,18 @@
       "globs": ["**/*.spec.js", "**/*.spec.jsx", "**/e2e/**/*.js"]
     },
     {
+      "id": "no_ts_colon_types_e2e",
+      "pattern": "\\b(let|const|var)\\s+\\w+\\s*:",
+      "message": "E2E specs under tests/e2e are plain .js: no TypeScript type annotations after variable names (e.g. use `let release` not `let release: () => void`)",
+      "globs": ["**/e2e/**/*.js"]
+    },
+    {
+      "id": "no_ts_promise_generic_e2e",
+      "pattern": "new\\s+Promise\\s*<",
+      "message": "E2E specs are plain .js: use `new Promise((resolve) => …)` without a generic type argument `<…>`",
+      "globs": ["**/e2e/**/*.js"]
+    },
+    {
       "id": "no_esm_import_in_server",
       "pattern": "^\\s*import\\s",
       "message": "Server tests must use CommonJS (require/module.exports), not ESM import",

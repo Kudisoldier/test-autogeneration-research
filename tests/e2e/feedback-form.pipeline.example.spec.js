@@ -70,14 +70,17 @@ test.describe('Feedback Form E2E Tests', () => {
 
   // plan-case: submit-button-disabled-during-submit
   test('Submit button is disabled and shows loading state during submission', async ({ page }) => {
+    let releasePost;
+    const postBlocked = new Promise((resolve) => {
+      releasePost = resolve;
+    });
+
     await page.route('**/api/feedback', async (route) => {
       if (route.request().method() !== 'POST') {
         await route.continue();
         return;
       }
-      await new Promise((resolve) => {
-        setTimeout(resolve, 400);
-      });
+      await postBlocked;
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -100,6 +103,7 @@ test.describe('Feedback Form E2E Tests', () => {
     await submit.click();
     await expect(submit).toBeDisabled();
     await expect(submit).toHaveText(/Submitting/i);
+    releasePost();
     await expect(page.getByTestId('submit-status-success')).toBeVisible({ timeout: 15_000 });
     await expect(submit).toBeEnabled();
   });

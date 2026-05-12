@@ -10,7 +10,7 @@
   },
   "risks": ["Timing on list refresh"],
   "invariants": ["Submit button disabled or loading during submit"],
-  "env_template": "E2E app URL: http://127.0.0.1:3000/ (root playwright.config.js use.baseURL + webServer npm run dev). Client dev server is Vite on port 3000 (client/vite.config.js), not Vite’s default 5173. In tests use await page.goto('/') or the same origin; do not use localhost:5173 unless you change the whole stack.",
+  "env_template": "E2E app URL: http://127.0.0.1:3000/ (root playwright.config.js use.baseURL + webServer npm run dev). Client dev server is Vite on port 3000 (client/vite.config.js), not Vite’s default 5173. In tests use await page.goto('/') or the same origin; do not use localhost:5173 unless you change the whole stack. Generated Playwright files are *.spec.js (plain JavaScript only — no TypeScript syntax).",
   "requirements": {
     "path": "specs/pipeline/examples/sample-requirements.md",
     "planner_mode": "full"

@@ -620,6 +620,9 @@ function buildDynamicPromptTail(stage, manifest, resolvedConfig) {
 
     if (tl === 'e2e') {
       parts.push(
+        'E2E files are **`*.spec.js` (plain JavaScript)**. Never emit TypeScript-only syntax: no `let x: Type`, no `new Promise<void>(…)`, no `as const` / `interface` / `type` aliases. Playwright will fail to parse `.js` files that contain TS.'
+      );
+      parts.push(
         'App URL: root `playwright.config.js` sets `use.baseURL` to **http://127.0.0.1:3000** and starts **`npm run dev`** (Vite on **port 3000** per `client/vite.config.js`). Use **`await page.goto(\'/\')`** or that origin only. Do **not** assume Vite’s default **5173** or `localhost:5173` unless the manifest explicitly says so.'
       );
       parts.push(
