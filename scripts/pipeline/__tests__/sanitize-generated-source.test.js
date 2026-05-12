@@ -103,6 +103,20 @@ await expect(page).toBeTruthy();
     }
   });
 
+  it('isPipelineE2eFlakyResearchEnv reads PIPELINE_E2E_FLAKY_RESEARCH', () => {
+    const { isPipelineE2eFlakyResearchEnv } = require('../sanitize-generated-source.js');
+    const prev = process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+    try {
+      delete process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+      expect(isPipelineE2eFlakyResearchEnv()).toBe(false);
+      process.env.PIPELINE_E2E_FLAKY_RESEARCH = '1';
+      expect(isPipelineE2eFlakyResearchEnv()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.PIPELINE_E2E_FLAKY_RESEARCH;
+      else process.env.PIPELINE_E2E_FLAKY_RESEARCH = prev;
+    }
+  });
+
   it('keeps waitForTimeout when PIPELINE_E2E_FLAKY_RESEARCH=1', () => {
     const prev = process.env.PIPELINE_E2E_FLAKY_RESEARCH;
     process.env.PIPELINE_E2E_FLAKY_RESEARCH = '1';

@@ -343,6 +343,7 @@ module.exports = {
   sanitizeGeneratedTestSource,
   stripPlaywrightWaitForTimeout,
   sourceUsesForbiddenPlaywrightWaitForTimeout,
+  isPipelineE2eFlakyResearchEnv,
   normalizeE2ePlaywrightBaseUrl,
   stripBom,
   stripLeadingGarbageIdentifierLines,

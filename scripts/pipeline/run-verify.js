@@ -7,7 +7,8 @@
  * then aggregates flaky metrics like `evaluate-tests.js`. Writes `<run-dir>/evaluation-report.json`
  * (model / TTG from `generate.meta.json` + `plan.meta.json`, type bucket from `context_manifest.json`
  * `test_level`). Assertion failures are recorded in the report and do not fail verify; only staging /
- * I/O errors exit 3.
+ * I/O errors exit 3. When `PIPELINE_E2E_FLAKY_RESEARCH` is set (`run-all --e2e-flaky-research`), the
+ * `no_waitForTimeout` forbidden check is skipped so research e2e specs may use `page.waitForTimeout`.
  *
  * Usage:
  *   node scripts/pipeline/run-verify.js --run-dir research-output/runs/run-123
@@ -27,7 +28,10 @@ const {
   summarizePlaywrightJsonReport,
   aggregateE2ePipelineRuns,
 } = require('./playwright-report-for-pipeline.js');
-const { sourceUsesForbiddenPlaywrightWaitForTimeout } = require('./sanitize-generated-source.js');
+const {
+  sourceUsesForbiddenPlaywrightWaitForTimeout,
+  isPipelineE2eFlakyResearchEnv,
+} = require('./sanitize-generated-source.js');
 
 /** Outer Playwright executions per e2e file in pipeline:verify (inner Playwright `--retries=0`). */
 const PIPELINE_E2E_REPEAT_RUNS = Math.max(
@@ -706,7 +710,7 @@ async function main() {
       const globs = rule.globs || ['**/*.js'];
       if (!globs.some((g) => simpleGlobMatch(relPosix, g))) continue;
       if (rule.id === 'no_waitForTimeout') {
-        if (sourceUsesForbiddenPlaywrightWaitForTimeout(content)) {
+        if (!isPipelineE2eFlakyResearchEnv() && sourceUsesForbiddenPlaywrightWaitForTimeout(content)) {
           logLines.push(`FAIL ${rule.id} in ${rel}: ${rule.message}`);
           await fs.writeFile(path.join(runDir, 'verify.log'), logLines.join('\n'), 'utf-8');
           console.error(`${rule.message} (${rule.id}) in ${rel}`);

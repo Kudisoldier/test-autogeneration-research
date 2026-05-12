@@ -22,7 +22,7 @@ function escapeArg(s) {
   return JSON.stringify(s);
 }
 
-/** Research mode: bias e2e generator (PIPELINE_E2E_FLAKY_RESEARCH); verify still runs with --run-tests for flaky metrics; LLM report skipped. */
+/** Research mode: bias e2e generator; verify skips no_waitForTimeout when PIPELINE_E2E_FLAKY_RESEARCH; LLM report skipped. */
 function e2eFlakyResearchEnabled(opts) {
   if (opts.e2eFlakyResearch) return true;
   const v = String(process.env.PIPELINE_E2E_FLAKY_RESEARCH || '')
@@ -55,7 +55,7 @@ async function main() {
     .option('--no-report', 'Skip the reporter stage even when --run-tests is set')
     .option(
       '--e2e-flaky-research',
-      'Set PIPELINE_E2E_FLAKY_RESEARCH=1 for generate (timing-unstable e2e); still run verify when --run-tests (flaky %); skip LLM report (research only; not merge gates)'
+      'Set PIPELINE_E2E_FLAKY_RESEARCH=1 for generate + verify (timing-unstable e2e allowed); verify skips no_waitForTimeout; still run --run-tests for flaky %; skip LLM report (research only; not merge gates)'
     )
     .parse();
 
@@ -91,14 +91,15 @@ async function main() {
 
   if (flakyResearch) {
     console.log(
-      '\n[pipeline] e2e flaky research: generator had PIPELINE_E2E_FLAKY_RESEARCH; verify runs for flaky metrics; LLM report skipped.\n'
+      '\n[pipeline] e2e flaky research: generator had PIPELINE_E2E_FLAKY_RESEARCH; verify runs (no_waitForTimeout check off); LLM report skipped.\n'
     );
   }
   const verifyArgs = o.runTests ? ' --run-tests' : '';
+  const verifyEnv = flakyResearch ? { ...process.env, PIPELINE_E2E_FLAKY_RESEARCH: '1' } : process.env;
   execSync(`node scripts/pipeline/run-verify.js --run-dir ${escapeArg(runDir)}${verifyArgs}`, {
     cwd: repoRoot,
     stdio: 'inherit',
-    env: process.env,
+    env: verifyEnv,
   });
 
   const shouldReport = o.runTests && o.report !== false && !flakyResearch;

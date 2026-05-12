@@ -23,7 +23,7 @@ on:
         required: false
         default: ""
       e2e_flaky_research:
-        description: "Research only: bias e2e generator toward timing instability; verify still runs (--run-tests) for flaky %; LLM report skipped (not a merge gate)"
+        description: "Research only: bias e2e generator; verify skips no_waitForTimeout + passes PIPELINE_E2E_FLAKY_RESEARCH; --run-tests for flaky %; LLM report skipped (not a merge gate)"
         required: false
         type: boolean
         default: false
